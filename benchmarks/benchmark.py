@@ -457,8 +457,8 @@ def parse_labeled_recorder_data(bench: BenchmarkDirectory,
 
 def git_fingerprint() -> str:
     data = {
-        'commit_hash': str(subprocess.check_output(['git', 'rev-parse', 'HEAD'])),
-        'commit_name': str(subprocess.check_output(['git', 'show-branch', '--no-name'])),
-        'branch': str(subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])),
+        'commit_hash': subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('utf8').strip(),
+        'commit_name': subprocess.check_output(['git', 'show-branch', '--no-name']).decode('utf8').strip(),
+        'branch': subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).decode('utf8').strip(),
     }
     return json.dumps(data)
