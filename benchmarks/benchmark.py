@@ -87,6 +87,7 @@ class SuiteDirectory(object):
         return f'SuiteDirectory({self.path})'
 
     def __enter__(self):
+        self.write_string('git.txt', git_fingerprint())
         self.write_string('start_time.txt', str(datetime.datetime.now()))
         return self
 
@@ -452,3 +453,12 @@ def parse_labeled_recorder_data(bench: BenchmarkDirectory,
         bench.log(f'Aggregate recorder data for {label} computed.')
 
     return outputs
+
+
+def git_fingerprint() -> str:
+    data = {
+        'commit_hash': str(subprocess.check_output(['git', 'rev-parse', 'HEAD'])),
+        'commit_name': str(subprocess.check_output(['git', 'show-branch', '--no-name'])),
+        'branch': str(subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])),
+    }
+    return json.dumps(data)
