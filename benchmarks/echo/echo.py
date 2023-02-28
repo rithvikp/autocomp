@@ -35,6 +35,9 @@ class Input(NamedTuple):
     # Benchmark parameters. ####################################################
     duration: datetime.timedelta
     timeout: datetime.timedelta
+    warmup_duration: datetime.timedelta
+    warmup_timeout: datetime.timedelta
+    warmup_sleep: datetime.timedelta
     client_lag: datetime.timedelta
     profiled: bool
     monitored: bool
@@ -180,6 +183,14 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 f'{input.timeout.total_seconds()}s',
                 '--num_clients',
                 f'{input.num_clients_per_proc}',
+                '--num_warmup_clients',
+                f'{input.num_clients_per_proc}',
+                '--warmup_duration',
+                f'{input.warmup_duration.total_seconds()}s',
+                '--warmup_timeout',
+                f'{input.warmup_timeout.total_seconds()}s',
+                '--warmup_sleep',
+                f'{input.warmup_sleep.total_seconds()}s',
                 '--output_file',
                 bench.abspath(f'client_data.csv'),
             ])

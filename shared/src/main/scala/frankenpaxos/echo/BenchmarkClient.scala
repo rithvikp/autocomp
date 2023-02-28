@@ -12,8 +12,7 @@ import scala.concurrent.Promise
 import scala.scalajs.js.annotation._
 
 @JSExportAll
-object BenchmarkClientInboundSerializer
-    extends ProtoSerializer[BenchmarkClientInbound] {
+object BenchmarkClientInboundSerializer extends ProtoSerializer[BenchmarkClientInbound] {
   type A = BenchmarkClientInbound
   override def toBytes(x: A): Array[Byte] = super.toBytes(x)
   override def fromBytes(bytes: Array[Byte]): A = super.fromBytes(bytes)

@@ -13,7 +13,10 @@ def main(args) -> None:
                     jvm_heap_size='100m',
                     duration=datetime.timedelta(seconds=10),
                     timeout=datetime.timedelta(seconds=3),
-                    client_lag=datetime.timedelta(seconds=0),
+                    warmup_duration=datetime.timedelta(seconds=3),
+                    warmup_timeout=datetime.timedelta(seconds=3),
+                    warmup_sleep=datetime.timedelta(seconds=1),
+                    client_lag=datetime.timedelta(seconds=1),
                     profiled=args.profile,
                     monitored=args.monitor,
                     prometheus_scrape_interval=datetime.timedelta(
