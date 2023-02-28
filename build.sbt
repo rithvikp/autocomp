@@ -19,7 +19,8 @@ lazy val frankenpaxos = crossProject(JSPlatform, JVMPlatform)
       "-unchecked",
       "-deprecation",
       "-feature",
-      "-Xfatal-warnings"
+      "-Xfatal-warnings",
+      "-language:postfixOps"
     ),
     libraryDependencies ++= Seq(
       "com.github.scopt" %% "scopt" % "3.7.0",
@@ -56,6 +57,8 @@ lazy val frankenpaxos = crossProject(JSPlatform, JVMPlatform)
   )
   .jsSettings(
     libraryDependencies += "org.scala-js" %%% "scalajs-java-time" % "0.2.5"
+  ).jvmSettings(
+    scalaVersion := "2.12.17",
   )
   // These settings enable scalameter. See [1].
   //

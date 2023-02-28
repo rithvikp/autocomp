@@ -238,3 +238,4 @@ dmypy.json
 .vscode/
 .metals/
 .bloop/
+metals.sbt
