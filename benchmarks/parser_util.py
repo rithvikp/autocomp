@@ -49,6 +49,15 @@ def get_benchmark_parser() -> argparse.ArgumentParser:
     parser.add_argument('-i',
                         '--identity_file',
                         help='SSH identity file for remote benchmarks')
+
+    parser.add_argument('--cluster_spec',
+                        type=str,
+                        default=None,
+                        help='A JSON file with a cluster specification to be constructed') 
+    parser.add_argument('--cluster_config',
+                        type=str,
+                        default=None,
+                        help='A JSON file with cloud-specific cluster configuration') 
     return parser
 
 

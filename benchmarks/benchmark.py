@@ -17,6 +17,7 @@ from . import host
 from . import pd_util
 from . import proc
 from . import util
+from . import provision
 from typing import (Any, Collection, Dict, Generic, Iterable, IO, List,
                     NamedTuple, Optional, Sequence, Tuple, TypeVar, Union)
 import colorful
@@ -219,6 +220,12 @@ Output = TypeVar('Output')
 
 
 class Suite(Generic[Input, Output]):
+    def __init__(self) -> None:
+        super().__init__()
+
+        # Provision instances if necessary
+        provision.do(self.args())
+
     # `args` returns a set of global arguments, typically passed in via the
     # command line.
     def args(self) -> Dict[Any, Any]:
