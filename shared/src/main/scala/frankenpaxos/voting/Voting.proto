@@ -1,0 +1,39 @@
+syntax = "proto2";
+
+package frankenpaxos.voting;
+
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  package_name: "frankenpaxos.voting"
+  flat_package: true
+};
+
+// Required fields can be used here given the constraints of how we run benchmarks
+message ClientRequest {
+  required int64 id = 1;
+  required bytes client_address = 2;
+}
+
+message ClientReply {
+  required int64 id = 1;
+  required bool accepted = 2;
+}
+
+message VoteRequest {
+  required int64 id = 1;
+  required bytes client_address = 2;
+}
+
+message VoteReply {
+  required int64 id = 1;
+  required bytes client_address = 2;
+  required bool accepted = 3;
+}
+
+message LeaderInbound {
+  oneof request {
+    ClientRequest client_request = 1;
+    VoteReply vote_reply = 2;
+    }
+}
