@@ -9,6 +9,7 @@ import frankenpaxos.monitoring.PrometheusCollectors
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import scala.scalajs.js.annotation._
+import com.google.protobuf.ByteString
 
 @JSExportAll
 object BenchmarkServerInboundSerializer
@@ -37,6 +38,7 @@ class BenchmarkServerMetrics(collectors: Collectors) {
 class BenchmarkServer[Transport <: frankenpaxos.Transport[Transport]](
     address: Transport#Address,
     transport: Transport,
+    persistLog: Boolean,
     logger: Logger,
     metrics: BenchmarkServerMetrics = new BenchmarkServerMetrics(
       PrometheusCollectors
@@ -45,6 +47,13 @@ class BenchmarkServer[Transport <: frankenpaxos.Transport[Transport]](
   override type InboundMessage = BenchmarkServerInbound
   override def serializer = BenchmarkServer.serializer
 
+  case class LogEntry(
+    ByteString client,
+    Long id,
+  )
+
+  private val log = mutable.ArrayBuffer[LogEntry]()
+
   override def receive(
       src: Transport#Address,
       request: BenchmarkServerInbound
@@ -52,6 +61,11 @@ class BenchmarkServer[Transport <: frankenpaxos.Transport[Transport]](
     val client =
       chan[BenchmarkClient[Transport]](src, BenchmarkClient.serializer)
     metrics.echoRequestsTotal.inc()
+
+    if (persistLog) {
+      log.append(LogEntry(client = ByteString.copyFrom(src.addressSerializer.toBytes(src)), id = request.id))
+    }
+
     client.send(BenchmarkClientInbound(id = request.id))
   }
 }

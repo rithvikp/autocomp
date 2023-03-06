@@ -14,6 +14,7 @@ object BenchmarkServerMain extends App {
   case class Flags(
       host: String = "localhost",
       port: Int = 9000,
+      persistLog: Boolean = false,
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009
   )
@@ -21,6 +22,7 @@ object BenchmarkServerMain extends App {
   val parser = new scopt.OptionParser[Flags]("") {
     opt[String]("host").action((x, f) => f.copy(host = x))
     opt[Int]("port").action((x, f) => f.copy(port = x))
+    opt[Boolean]("persist_log").action((x, f) => f.copy(persistLog = x))
     opt[String]("prometheus_host")
       .action((x, f) => f.copy(prometheusHost = x))
     opt[Int]("prometheus_port")
@@ -40,6 +42,7 @@ object BenchmarkServerMain extends App {
   val server = new BenchmarkServer[NettyTcpTransport](
     address = NettyTcpAddress(new InetSocketAddress(flags.host, flags.port)),
     transport = new NettyTcpTransport(logger),
+    persistLog = persistLog,
     logger = logger
   )
 

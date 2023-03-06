@@ -33,6 +33,7 @@ class Input(NamedTuple):
     jvm_heap_size: str
 
     # Benchmark parameters. ####################################################
+    persistLog: bool
     duration: datetime.timedelta
     timeout: datetime.timedelta
     warmup_duration: datetime.timedelta
@@ -115,6 +116,8 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 net.placement().server.host.ip(),
                 '--port',
                 str(net.placement().server.port),
+                '--persist_log',
+                'true' if input.persistLog else 'false',
                 '--prometheus_host',
                 net.placement().server.host.ip(),
                 '--prometheus_port',

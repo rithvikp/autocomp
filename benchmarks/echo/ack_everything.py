@@ -2,7 +2,11 @@ from .echo import *
 
 
 def main(args) -> None:
-    class SmokeEchoSuite(EchoSuite):
+    class AckEverythingEchoSuite(EchoSuite):
+        def __init__(self, persist: bool) -> None:
+            super().__init__()
+            self._persist = persist
+
         def args(self) -> Dict[Any, Any]:
             return vars(args)
 
@@ -11,6 +15,7 @@ def main(args) -> None:
                 return Input(
                     num_clients_per_proc=clients,
                     jvm_heap_size='100m',
+                    persistLog=self._persist,
                     duration=datetime.timedelta(seconds=10),
                     timeout=datetime.timedelta(seconds=3),
                     warmup_duration=datetime.timedelta(seconds=3),
@@ -41,9 +46,9 @@ def main(args) -> None:
                 'start_throughput_1s.p90': output.start_throughput_1s.p90,
             })
 
-    suite = SmokeEchoSuite()
+    suite = AckEverythingEchoSuite(False)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'echo_smoke') as dir:
+                                  'echo_ack_everything') as dir:
         suite.run_suite(dir)
 
 
