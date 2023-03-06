@@ -42,7 +42,7 @@ object BenchmarkServerMain extends App {
   val server = new BenchmarkServer[NettyTcpTransport](
     address = NettyTcpAddress(new InetSocketAddress(flags.host, flags.port)),
     transport = new NettyTcpTransport(logger),
-    persistLog = persistLog,
+    persistLog = flags.persistLog,
     logger = logger
   )
 

@@ -4,6 +4,7 @@ import collection.mutable
 import com.github.tototoshi.csv.CSVWriter
 import frankenpaxos.Actor
 import frankenpaxos.BenchmarkUtil
+import frankenpaxos.PrometheusUtil
 import frankenpaxos.FileLogger
 import frankenpaxos.Flags.durationRead
 import frankenpaxos.NettyTcpAddress
@@ -30,7 +31,9 @@ object BenchmarkClientMain extends App {
       warmupDuration: java.time.Duration = java.time.Duration.ofSeconds(0),
       warmupTimeout: Duration = 0 seconds,
       warmupSleep: java.time.Duration = java.time.Duration.ofSeconds(0),
-      numWarmupClients: Int = 1
+      numWarmupClients: Int = 1,
+      prometheusHost: String = "0.0.0.0",
+      prometheusPort: Int = 8009
   )
 
   val parser = new scopt.OptionParser[Flags]("") {
@@ -46,6 +49,8 @@ object BenchmarkClientMain extends App {
     opt[Duration]("warmup_timeout").required().action((x, f) => f.copy(warmupTimeout = x))
     opt[java.time.Duration]("warmup_sleep").action((x, f) => f.copy(warmupSleep = x))
     opt[Int]("num_warmup_clients").action((x, f) => f.copy(numWarmupClients = x))
+    opt[String]("prometheus_host").action((x, f) => f.copy(prometheusHost = x))
+    opt[Int]("prometheus_port").action((x, f) => f.copy(prometheusPort = x)).text("-1 to disable")
   }
 
   val flags: Flags = parser.parse(args, Flags()) match {
@@ -106,6 +111,8 @@ object BenchmarkClientMain extends App {
       })
   }
 
+  val prometheusServer = PrometheusUtil.server(flags.prometheusHost, flags.prometheusPort)
+
   // Warm up the protocol
   implicit val context = transport.executionContext
   val warmupFutures =
@@ -142,4 +149,10 @@ object BenchmarkClientMain extends App {
   logger.info("Shutting down transport.")
   transport.shutdown()
   logger.info("Transport shut down.")
+
+  prometheusServer.foreach(server => {
+    logger.info("Stopping prometheus.")
+    server.stop()
+    logger.info("Prometheus stopped.")
+  })
 }

@@ -10,10 +10,10 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import scala.scalajs.js.annotation._
 import com.google.protobuf.ByteString
+import scala.collection.mutable
 
 @JSExportAll
-object BenchmarkServerInboundSerializer
-    extends ProtoSerializer[BenchmarkServerInbound] {
+object BenchmarkServerInboundSerializer extends ProtoSerializer[BenchmarkServerInbound] {
   type A = BenchmarkServerInbound
   override def toBytes(x: A): Array[Byte] = super.toBytes(x)
   override def fromBytes(bytes: Array[Byte]): A = super.fromBytes(bytes)
@@ -48,8 +48,8 @@ class BenchmarkServer[Transport <: frankenpaxos.Transport[Transport]](
   override def serializer = BenchmarkServer.serializer
 
   case class LogEntry(
-    ByteString client,
-    Long id,
+      client: ByteString,
+      id: Long
   )
 
   private val log = mutable.ArrayBuffer[LogEntry]()
@@ -63,7 +63,11 @@ class BenchmarkServer[Transport <: frankenpaxos.Transport[Transport]](
     metrics.echoRequestsTotal.inc()
 
     if (persistLog) {
-      log.append(LogEntry(client = ByteString.copyFrom(src.addressSerializer.toBytes(src)), id = request.id))
+      log.append(
+        LogEntry(client = ByteString.copyFrom(transport.addressSerializer.toBytes(src)),
+                 id = request.id
+        )
+      )
     }
 
     client.send(BenchmarkClientInbound(id = request.id))

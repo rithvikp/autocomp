@@ -371,7 +371,13 @@ def _wrangle_recorder_data(bench: BenchmarkDirectory,
     bench.log('Reading recorder data from the following CSVs:')
     for filename in filenames:
         bench.log(f'- {filename}')
-    df = pd_util.read_csvs(filenames, parse_dates=['start', 'stop'])
+    
+    try:
+        df = pd_util.read_csvs(filenames, parse_dates=['start', 'stop'])
+    except:
+        print('Failed to find the data CSVs: your clients/other processes may have crashed')
+        raise
+
     bench.log('Recorder data read.')
 
     bench.log('Setting aggregate recorder data index.')

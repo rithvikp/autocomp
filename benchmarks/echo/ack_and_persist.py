@@ -3,7 +3,7 @@ from .ack_everything import AckEverythingEchoSuite
 
 
 def main(args) -> None:
-    suite = AckEverythingEchoSuite(True)
+    suite = AckEverythingEchoSuite(args, True)
     with benchmark.SuiteDirectory(args.suite_directory,
                                   'echo_ack_and_persist') as dir:
         suite.run_suite(dir)

@@ -196,6 +196,10 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 f'{input.warmup_sleep.total_seconds()}s',
                 '--output_file',
                 bench.abspath(f'client_data.csv'),
+                '--prometheus_host',
+                client.host.ip(),
+                '--prometheus_port',
+                str(client.port+1) if input.monitored else '-1',
             ])
         if input.profiled:
             client_proc = perf_util.JavaPerfProc(
