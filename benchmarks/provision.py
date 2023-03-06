@@ -3,7 +3,7 @@ import json
 import subprocess
 
 def do(args: Dict[Any, Any]):
-    if 'cluster_spec' not in args:
+    if 'cluster_spec' not in args or args['cluster_spec'] is None:
         return
     
     with open(args['cluster_spec'], 'r') as f:

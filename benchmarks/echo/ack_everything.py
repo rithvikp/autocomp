@@ -20,7 +20,8 @@ class AckEverythingEchoSuite(EchoSuite):
                 warmup_duration=datetime.timedelta(seconds=3),
                 warmup_timeout=datetime.timedelta(seconds=3),
                 warmup_sleep=datetime.timedelta(seconds=1),
-                client_lag=datetime.timedelta(seconds=1),
+                # Need a large lag in order for Prometheus to initialize correctly
+                client_lag=datetime.timedelta(seconds=10),
                 profiled=self._args.profile,
                 monitored=self._args.monitor,
                 prometheus_scrape_interval=datetime.timedelta(
