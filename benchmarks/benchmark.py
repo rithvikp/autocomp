@@ -28,11 +28,10 @@ import datetime
 import json
 import os
 import pandas as pd
-import queue
 import random
 import string
 import subprocess
-import threading
+import tempfile
 
 
 def _random_string(n: int) -> str:
@@ -222,9 +221,24 @@ Output = TypeVar('Output')
 class Suite(Generic[Input, Output]):
     def __init__(self) -> None:
         super().__init__()
+        args = self.args()
+
+        self.cluster_spec = None
+        self.cluster_config = None
+        if 'cluster_spec' in args or args['cluster_spec'] is not None:
+            with open(args['cluster_spec'], 'r') as f:
+                self.cluster_spec = json.load(f)
+        if 'cluster_config' in args or args['cluster_config'] is not None:
+            with open(args['cluster_config'], 'r') as f:
+                self.cluster_config = json.load(f)
+        elif self.cluster_spec is not None:
+            raise ValueError('cluster_config is required if there is a cluster spec')
 
         # Provision instances if necessary
-        provision.do(self.args())
+        if self.args()['cluster'] is None:
+            self._f = tempfile.NamedTemporaryFile()   
+            self._args.cluster = self._f.name
+            self._provisioning_state = provision.do(self.cluster_config, self.cluster_spec, self.args())
 
     # `args` returns a set of global arguments, typically passed in via the
     # command line.
@@ -260,6 +274,7 @@ class Suite(Generic[Input, Output]):
 
         # Record args and inputs.
         suite_dir.write_dict('args.json', args)
+        suite_dir.write_dict('cluster_config.json', self.cluster_config)
         suite_dir.write_string('inputs.txt', '\n'.join(str(i) for i in inputs))
 
         # Create file to record suite results.
@@ -313,6 +328,10 @@ class Suite(Generic[Input, Output]):
             # Finally, we display a summary of the benchmark.
             info += f'{colorful.lightGray(self.summary(input, output))}'
             print(info)
+
+        # De-provision resources if necessary.
+        self._provisioning_state.stop()
+        self._f.close()
 
 
 class LatencyOutput(NamedTuple):

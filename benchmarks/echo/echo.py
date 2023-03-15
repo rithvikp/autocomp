@@ -105,31 +105,32 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         java += [f'-Xms{input.jvm_heap_size}', f'-Xmx{input.jvm_heap_size}']
 
         # Launch server.
-        server_proc = bench.popen(
-            host=net.placement().server.host,
-            label=f'server',
-            cmd=java + [
-                '-cp',
-                os.path.abspath(args['jar']),
-                'frankenpaxos.echo.BenchmarkServerMain',
-                '--host',
-                net.placement().server.host.ip(),
-                '--port',
-                str(net.placement().server.port),
-                '--persist_log',
-                'true' if input.persistLog else 'false',
-                '--prometheus_host',
-                net.placement().server.host.ip(),
-                '--prometheus_port',
-                str(net.placement().server.port +
-                    1) if input.monitored else '-1',
-            ],
-        )
-        if input.profiled:
-            server_proc = perf_util.JavaPerfProc(bench,
-                                                 net.placement().server.host,
-                                                 server_proc, f'server')
-        bench.log('Servers started.')
+        if self.cluster_config is None or self.cluster_config["services"]["server"]["type"] == "scala":
+            server_proc = bench.popen(
+                host=net.placement().server.host,
+                label=f'server',
+                cmd=java + [
+                    '-cp',
+                    os.path.abspath(args['jar']),
+                    'frankenpaxos.echo.BenchmarkServerMain',
+                    '--host',
+                    net.placement().server.host.ip(),
+                    '--port',
+                    str(net.placement().server.port),
+                    '--persist_log',
+                    'true' if input.persistLog else 'false',
+                    '--prometheus_host',
+                    net.placement().server.host.ip(),
+                    '--prometheus_port',
+                    str(net.placement().server.port +
+                        1) if input.monitored else '-1',
+                ],
+            )
+            if input.profiled:
+                server_proc = perf_util.JavaPerfProc(bench,
+                                                    net.placement().server.host,
+                                                    server_proc, f'server')
+        bench.log('Server started.')
 
         # Launch Prometheus.
         if input.monitored:
