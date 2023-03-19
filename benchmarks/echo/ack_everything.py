@@ -28,9 +28,9 @@ class AckEverythingEchoSuite(EchoSuite):
                     milliseconds=200),
             )
 
-        return [
-            gen_input(10),
-        ]
+        # return [
+        #     gen_input(10),
+        # ]
 
         return [
             gen_input(10),

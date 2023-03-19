@@ -1,9 +1,9 @@
 {
     "1": {
-        "client": [
+        "clients": [
             "localhost"
         ],
-        "server": [
+        "servers": [
             "localhost"
         ]
     }

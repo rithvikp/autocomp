@@ -13,6 +13,11 @@
 #
 # This file contains utilities for running and organizing benchmarks suites.
 
+# TODO:
+# Warmup 30s
+# Cooldown period: 2min
+# Run longer
+
 from . import host
 from . import pd_util
 from . import proc
@@ -32,6 +37,7 @@ import random
 import string
 import subprocess
 import tempfile
+import argparse
 
 
 def _random_string(n: int) -> str:
@@ -116,7 +122,7 @@ class SuiteDirectory(object):
         path = os.path.join(self.path, "{:03}{}".format(benchmark_dir_id,
                                                         name_suffix))
         return BenchmarkDirectory(path)
-
+    
 
 # A BenchmarkDirectory is like a SuiteDirectory. It provides methods to record
 # information about a benchmark as well as other helpful methods. For example,
@@ -205,7 +211,7 @@ class BenchmarkDirectory(object):
         if pid:
             self.pids[(host.ip(), pid)] = label
         return proc
-
+    
 
 # A Suite represents a benchmark suite. A suite is parameterized on an input
 # type Input and output type Output. A suite must provide
@@ -223,8 +229,12 @@ class Suite(Generic[Input, Output]):
         super().__init__()
         args = self.args()
 
-        self.cluster_spec = None
-        self.cluster_config = None
+        if not hasattr(self, '_args'):
+            # A hack for type-checking
+            self._args: Any = None
+
+        self.cluster_spec = {}
+        self.cluster_config = {}
         if 'cluster_spec' in args or args['cluster_spec'] is not None:
             with open(args['cluster_spec'], 'r') as f:
                 self.cluster_spec = json.load(f)
@@ -238,7 +248,10 @@ class Suite(Generic[Input, Output]):
         if self.args()['cluster'] is None:
             self._f = tempfile.NamedTemporaryFile()   
             self._args.cluster = self._f.name
-            self._provisioning_state = provision.do(self.cluster_config, self.cluster_spec, self.args())
+            self.provisioner = provision.do(self.cluster_config, self.cluster_spec, self.args())
+
+            self._args["identity_file"] = self.provisioner.identity_file()
+            
 
     # `args` returns a set of global arguments, typically passed in via the
     # command line.
@@ -257,6 +270,12 @@ class Suite(Generic[Input, Output]):
     # depending on what exactly is being tested.
     def summary(self, input: Input, output: Output) -> str:
         raise NotImplementedError("")
+    
+    def service_type(self, role: str) -> str:
+        if self.cluster_config is None:
+            return "scala"
+        
+        return self.cluster_config["services"][role]["type"]
 
     # `run_benchmark` takes in an Input and spits out an Output. It runs a
     # single benchmark to completion.
@@ -328,9 +347,10 @@ class Suite(Generic[Input, Output]):
             # Finally, we display a summary of the benchmark.
             info += f'{colorful.lightGray(self.summary(input, output))}'
             print(info)
+            self.provisioner.post_benchmark()
 
         # De-provision resources if necessary.
-        self._provisioning_state.stop()
+        self.provisioner.stop()
         self._f.close()
 
 

@@ -5,14 +5,9 @@ use hydroflow::util::{
 use hydroflow_datalog::datalog;
 
 #[derive(clap::Args, Debug)]
-#[allow(non_snake_case)] // For consistency with the Scala code
 pub struct ServerArgs {
     #[clap(long)]
-    persistLog: bool,
-    #[clap(long, default_value = "0.0.0.0")]
-    prometheusHost: String,
-    #[clap(long, default_value = "8009")]
-    prometheusPort: i32,
+    persist_log: bool,
 }
 
 pub async fn run_server(cfg: ServerArgs) {
@@ -24,7 +19,9 @@ pub async fn run_server(cfg: ServerArgs) {
         .await
         .take_source();
 
-    frankenpaxos::serve_prometheus(cfg.prometheusHost, cfg.prometheusPort);
+    if cfg.persist_log {
+        // TODO: Do something
+    }
 
     let mut df = datalog!(
         r#"

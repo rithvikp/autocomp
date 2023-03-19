@@ -1,6 +1,6 @@
 {
     "1": {
-        "server": 1,
-        "client": 1
+        "servers": 1,
+        "clients": 1
     }
 }

@@ -5,6 +5,7 @@ import random
 import string
 import subprocess
 import time
+import hydro
 
 
 def _random_string(n: int) -> str:
@@ -193,3 +194,21 @@ class ParamikoProc(Proc):
 
         self._channel.close()
         self._killed = True
+
+
+class HydroProc(Proc):
+    def __init__(self, service: hydro.HydroflowCrate):
+        self._service = service
+    
+    def kill(self) -> None:
+        # FIXME[Hydro CLI]: Terminate the process
+        pass
+    
+    def cmd(self) ->  str:
+        raise NotImplementedError("Hydro CLI deployments do not support the cmd command")
+    
+    def pid(self) -> Optional[int]:
+        raise NotImplementedError("Hydro CLI deployments do not support the pid command")
+    
+    def wait(self) -> Optional[int]:
+        raise NotImplementedError("Hydro CLI deployments do not support the wait command")

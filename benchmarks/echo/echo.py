@@ -53,21 +53,32 @@ class EchoNet:
     def __init__(self, cluster: cluster.Cluster, input: Input) -> None:
         self._cluster = cluster.f(1)
         self._input = input
+        self._custom_placement: Optional[EchoNet.Placement] = None
 
     class Placement(NamedTuple):
         client: host.Endpoint
         server: host.Endpoint
 
     def placement(self) -> Placement:
+        if self._custom_placement is not None:
+            return self._custom_placement
+
         ports = itertools.count(10000, 100)
 
         def portify_one(h: host.Host) -> host.Endpoint:
             return host.Endpoint(h, next(ports))
 
         return self.Placement(
-            client=portify_one(self._cluster['client'][0]),
-            server=portify_one(self._cluster['server'][0]),
+            client=portify_one(self._cluster['clients'][0]),
+            server=portify_one(self._cluster['servers'][0]),
         )
+    
+    def set_custom_placement(self, endpoints: Dict[str, List[host.Endpoint]]):
+        p = self.Placement(
+            client = endpoints['clients'][0],
+            server = endpoints['servers'][0]
+        )
+        self._custom_placement = p
 
 
 # Suite ########################################################################
@@ -105,7 +116,18 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         java += [f'-Xms{input.jvm_heap_size}', f'-Xmx{input.jvm_heap_size}']
 
         # Launch server.
-        if self.cluster_config is None or self.cluster_config["services"]["server"]["type"] == "scala":
+        shared_server_args = [
+            '--persist_log',
+            'true' if input.persistLog else 'false',
+            '--prometheus_host',
+            net.placement().server.host.ip(),
+            '--prometheus_port',
+            str(net.placement().server.port +
+                1) if input.monitored else '-1',
+        ]
+        if self.service_type("servers") == "hydro":
+            server_proc = self.provisioner.popen_hydroflow(bench, f'server', 1, shared_server_args)
+        else:
             server_proc = bench.popen(
                 host=net.placement().server.host,
                 label=f'server',
@@ -117,14 +139,7 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                     net.placement().server.host.ip(),
                     '--port',
                     str(net.placement().server.port),
-                    '--persist_log',
-                    'true' if input.persistLog else 'false',
-                    '--prometheus_host',
-                    net.placement().server.host.ip(),
-                    '--prometheus_port',
-                    str(net.placement().server.port +
-                        1) if input.monitored else '-1',
-                ],
+                ] + shared_server_args,
             )
             if input.profiled:
                 server_proc = perf_util.JavaPerfProc(bench,
@@ -157,6 +172,10 @@ class EchoSuite(benchmark.Suite[Input, Output]):
             bench.log('Prometheus started.')
 
         # Lag the client
+        endpoints = self.provisioner.rebuild({"clients": "servers", "servers": "clients"}, {"clients": 1})
+        if endpoints is not None:
+            net.set_custom_placement(endpoints)
+
         time.sleep(input.client_lag.total_seconds())
         bench.log('Client lag ended.')
 
@@ -211,6 +230,9 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         # Wait for the client to finish and then terminate the server.
         client_proc.wait()
         server_proc.kill()
+        if input.monitored:
+            prometheus_server.kill()
+
         bench.log('Clients finished and processes terminated.')
 
         client_csvs = [
