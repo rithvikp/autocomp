@@ -1,4 +1,4 @@
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence, Union, Callable, Any
 import abc
 import paramiko
 import random
@@ -6,6 +6,7 @@ import string
 import subprocess
 import time
 import hydro
+from . import host
 
 
 def _random_string(n: int) -> str:
@@ -196,7 +197,7 @@ class ParamikoProc(Proc):
         self._killed = True
 
 
-class HydroProc(Proc):
+class HydroflowProc(Proc):
     def __init__(self, service: hydro.HydroflowCrate):
         self._service = service
     
@@ -212,3 +213,32 @@ class HydroProc(Proc):
     
     def wait(self) -> Optional[int]:
         raise NotImplementedError("Hydro CLI deployments do not support the wait command")
+
+
+class CustomProc(Proc):
+    def __init__(self, start: Callable[[], Proc]):
+        self._start= start
+        self._proc = None
+    
+    def deploy(self):
+        self._proc = self._start()
+
+    def kill(self) -> None:
+        if self._proc is None:
+            raise Exception("The process has not yet been started")
+        self._proc.kill()
+    
+    def cmd(self) ->  str:
+        if self._proc is None:
+            raise Exception("The process has not yet been started")
+        return self._proc.cmd()
+    
+    def pid(self) -> Optional[int]:
+        if self._proc is None:
+            raise Exception("The process has not yet been started")
+        return self._proc.pid()
+    
+    def wait(self) -> Optional[int]:
+        if self._proc is None:
+            raise Exception("The process has not yet been started")
+        return self._proc.wait()

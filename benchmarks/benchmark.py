@@ -235,6 +235,7 @@ class Suite(Generic[Input, Output]):
 
         self.cluster_spec = {}
         self.cluster_config = {}
+        self.provisioner = None
         if 'cluster_spec' in args or args['cluster_spec'] is not None:
             with open(args['cluster_spec'], 'r') as f:
                 self.cluster_spec = json.load(f)
@@ -347,10 +348,12 @@ class Suite(Generic[Input, Output]):
             # Finally, we display a summary of the benchmark.
             info += f'{colorful.lightGray(self.summary(input, output))}'
             print(info)
-            self.provisioner.post_benchmark()
+            if self.provisioner is not None:
+                self.provisioner.post_benchmark()
 
         # De-provision resources if necessary.
-        self.provisioner.stop()
+        if self.provisioner is not None:
+            self.provisioner.stop()
         self._f.close()
 
 
