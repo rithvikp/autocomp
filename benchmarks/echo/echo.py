@@ -47,20 +47,51 @@ class Input(NamedTuple):
 
 Output = benchmark.RecorderOutput
 
+
+# Networks #####################################################################
+class EchoNet:
+    def __init__(self, input: Input, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
+        self._input = input
+        self._endpoints = endpoints
+
+    class Placement(NamedTuple):
+        client: host.Endpoint
+        server: host.Endpoint
+
+    def placement(self) -> Placement:
+        ports = itertools.count(10000, 100)
+
+        def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
+            if e.port is None:
+                return host.Endpoint(e.host, next(ports))
+            return e
+
+        return self.Placement(
+            client=portify_one(self._endpoints['clients'][0]),
+            server=portify_one(self._endpoints['servers'][0]),
+        )
+
+
 # Suite ########################################################################
 class EchoSuite(benchmark.Suite[Input, Output]):
     def __init__(self) -> None:
         super().__init__()
+        self._cluster = cluster.Cluster.from_json_file(self.args()['cluster'],
+                                                       self._connect)
 
-    def config(self, endpoints: Dict[str, List[host.Endpoint]]) -> proto_util.Message:
-        return {
-            'f': self._input.f,
-            'client_address': [{'host': e.host.ip(), 'port': e.port} for e in endpoints['clients']],
-            'server_address': [{'host': e.host.ip(), 'port': e.port} for e in endpoints['clients']],
-        }
+    def _connect(self, address: str) -> host.Host:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.client.AutoAddPolicy)
+        if self.args()['identity_file']:
+            client.connect(address, key_filename=self.args()['identity_file'])
+        else:
+            client.connect(address)
+        return host.RemoteHost(client)
 
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], input: Input) -> Output:
+        endpoints = self.provisioner.rebuild(1, {"clients": "servers", "servers": "clients"})
+        net = EchoNet(input, endpoints)
 
         # If we're monitoring the code, run garbage collection verbosely.
         java = ['java']
@@ -77,26 +108,30 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         java += [f'-Xms{input.jvm_heap_size}', f'-Xmx{input.jvm_heap_size}']
 
         # Launch server.
-        shared_server_args = lambda prom_port: [
+        shared_server_args = [
             '--persist_log',
             'true' if input.persistLog else 'false',
             '--prometheus_host',
-            '0.0.0.0',
+            net.placement().server.host.ip(),
             '--prometheus_port',
-            str(prom_port) if input.monitored else '-1',
+            str(net.placement().server.port +
+                1) if input.monitored else '-1',
         ]
         if self.service_type("servers") == "hydro":
             server_proc = self.provisioner.popen_hydroflow(bench, f'server', 1, shared_server_args)
         else:
-            server_proc = self.provisioner.popen(
-                bench,
-                label=f'client',
-                f=1,
-                cmd=lambda prom_port: java + [
+            server_proc = bench.popen(
+                host=net.placement().server.host,
+                label=f'server',
+                cmd=java + [
                     '-cp',
                     os.path.abspath(args['jar']),
                     'frankenpaxos.echo.BenchmarkServerMain',
-                ] + shared_server_args(prom_port),
+                    '--host',
+                    net.placement().server.host.ip(),
+                    '--port',
+                    str(net.placement().server.port),
+                ] + shared_server_args,
             )
             if input.profiled:
                 server_proc = perf_util.JavaPerfProc(bench,
@@ -105,41 +140,28 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         bench.log('Server started.')
 
         # Launch Prometheus.
-
-        def write_configs(endpoints: Dict[str, List[host.Endpoint]], prometheus_endpoints: Dict[str, List[host.Endpoint]]) -> None:
-            # Write the config.
-            config = self.config(endpoints)
-            bench.write_string('config.pbtxt', proto_util.message_to_pbtext(config))
-
-            # Setup prometheus
-            if input.monitored:
-                prometheus_config = prometheus.prometheus_config(
-                    int(input.prometheus_scrape_interval.total_seconds() * 1000), {
-                        'echo_client': [
-                            f'{net.placement().client.host.ip()}:{net.placement().client.port+1}'
-                        ],
-                        'echo_server': [
-                            f'{net.placement().server.host.ip()}:' +
-                            f'{net.placement().server.port+1}'
-                        ],
-                    })
+        if input.monitored:
+            prometheus_config = prometheus.prometheus_config(
+                int(input.prometheus_scrape_interval.total_seconds() * 1000), {
+                    'echo_client': [
+                        f'{net.placement().client.host.ip()}:{net.placement().client.port+1}'
+                    ],
+                    'echo_server': [
+                        f'{net.placement().server.host.ip()}:' +
+                        f'{net.placement().server.port+1}'
+                    ],
+                })
             bench.write_string('prometheus.yml', yaml.dump(prometheus_config))
-
-            bench.log('Finished writing out config files post-deployment')
-
-        # Lag the client
-        self.provisioner.rebuild({"clients": "servers", "servers": "clients"})
-
-        prometheus_server = bench.popen(
-            host=host.LocalHost(),
-            label='prometheus',
-            cmd=[
-                'prometheus',
-                f'--config.file={bench.abspath("prometheus.yml")}',
-                f'--storage.tsdb.path={bench.abspath("prometheus_data")}',
-            ],
-        )
-        bench.log('Prometheus started.')
+            prometheus_server = bench.popen(
+                host=host.LocalHost(),
+                label='prometheus',
+                cmd=[
+                    'prometheus',
+                    f'--config.file={bench.abspath("prometheus.yml")}',
+                    f'--storage.tsdb.path={bench.abspath("prometheus_data")}',
+                ],
+            )
+            bench.log('Prometheus started.')
 
         time.sleep(input.client_lag.total_seconds())
         bench.log('Client lag ended.')
@@ -196,7 +218,7 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         client_proc.wait()
         server_proc.kill()
         if input.monitored:
-            prometheus_server.kill()
+             prometheus_server.kill()
 
         bench.log('Clients finished and processes terminated.')
 

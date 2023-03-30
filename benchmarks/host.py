@@ -1,5 +1,5 @@
 from . import proc
-from typing import Any, NamedTuple, Sequence, Union
+from typing import Any, NamedTuple, Sequence, Union, Optional
 import abc
 import paramiko
 
@@ -24,6 +24,9 @@ class Endpoint(NamedTuple):
     host: Host
     port: int
 
+class PartialEndpoint(NamedTuple):
+    host: Host
+    port: Optional[int]
 
 class LocalHost(Host):
     def ip(self) -> str:
