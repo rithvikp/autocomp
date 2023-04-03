@@ -28,20 +28,20 @@ class AckEverythingEchoSuite(EchoSuite):
                     milliseconds=200),
             )
 
-        # return [
-        #     gen_input(10),
-        # ]
-
         return [
             gen_input(10),
-            gen_input(25),
-            gen_input(75),
-            gen_input(100),
-            gen_input(150),
-            gen_input(200),
-            gen_input(250),
-            gen_input(350),
-        ]*3
+        ]
+
+        # return [
+        #     gen_input(10),
+        #     gen_input(25),
+        #     gen_input(75),
+        #     gen_input(100),
+        #     gen_input(150),
+        #     gen_input(200),
+        #     gen_input(250),
+        #     gen_input(350),
+        # ]*3
 
     def summary(self, input: Input, output: Output) -> str:
         return str({

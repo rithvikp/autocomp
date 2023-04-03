@@ -233,25 +233,21 @@ class Suite(Generic[Input, Output]):
             # A hack for type-checking
             self._args: Any = None
 
-        self.cluster_spec = {}
         self.cluster_config = {}
         self.provisioner = None
-        if 'cluster_spec' in args or args['cluster_spec'] is not None:
-            with open(args['cluster_spec'], 'r') as f:
-                self.cluster_spec = json.load(f)
-        if 'cluster_config' in args or args['cluster_config'] is not None:
+
+        if 'cluster_config' in args and args['cluster_config'] is not None:
             with open(args['cluster_config'], 'r') as f:
                 self.cluster_config = json.load(f)
-        elif self.cluster_spec is not None:
-            raise ValueError('cluster_config is required if there is a cluster spec')
+        else:
+            raise ValueError('Running experiments with a manual configuration is currently not supported.')
 
         # Provision instances if necessary
-        if self.args()['cluster'] is None:
-            self._f = tempfile.NamedTemporaryFile()   
-            self._args.cluster = self._f.name
-            self.provisioner = provision.do(self.cluster_config, self.cluster_spec, self.args())
+        self._f = tempfile.NamedTemporaryFile()   
+        self._args.cluster = self._f.name
+        self.provisioner = provision.do(self.cluster_config, self.cluster_spec(), self.args())
 
-            self._args.identity_file = self.provisioner.identity_file()
+        self._args.identity_file = self.provisioner.identity_file()
             
 
     # `args` returns a set of global arguments, typically passed in via the
@@ -262,6 +258,10 @@ class Suite(Generic[Input, Output]):
     # `inputs` returns the set of benchmark inputs that will run as part of
     # this suite.
     def inputs(self) -> Collection[Input]:
+        raise NotImplementedError("")
+
+    def cluster_spec(self) -> Dict[str, Dict[str, int]]:
+        """Returns a specification of clusters (role --> number of nodes) for every supported value of f."""
         raise NotImplementedError("")
 
     # As a suite runs, the results of the benchmarks are printed to the screen.

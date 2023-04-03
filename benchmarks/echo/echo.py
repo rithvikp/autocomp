@@ -50,9 +50,9 @@ Output = benchmark.RecorderOutput
 
 # Networks #####################################################################
 class EchoNet:
-    def __init__(self, inp: Input):
+    def __init__(self, inp: Input, endpoints: Dict[str, List[host.PartialEndpoint]]):
         self._input = inp
-        self._endpoints = None
+        self._endpoints = endpoints
 
     def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
         self._endpoints = endpoints
@@ -65,16 +65,9 @@ class EchoNet:
         ports = itertools.count(40001, 100)
 
         def portify_one(role: str, index: int) -> host.Endpoint:
-            if not self._input.monitored:
-                return host.Endpoint(host.LocalHost(), -1)
-
-            if self._endpoints is None:
-                return host.Endpoint(host.LocalHost(), next(ports))
-
             e = self._endpoints[role][index]
-            if e.port is None:
-                return host.Endpoint(e.host, next(ports))
-            return e
+
+            return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
 
         return self.Placement(
             client=portify_one('clients', 0),
@@ -97,22 +90,33 @@ class EchoNet:
 
 # Suite ########################################################################
 class EchoSuite(benchmark.Suite[Input, Output]):
+    def cluster_spec(self) -> Dict[str, Dict[str, int]]:
+        return {
+            '1': {
+                'servers': 1,
+                'clients': 1,
+            },
+        }
+
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], inp: Input) -> Output:
-        net = EchoNet(inp)
+        net = EchoNet(inp, self.provisioner.hosts(1))
 
         shared_server_args = [
             '--persist_log',
             'true' if inp.persistLog else 'false',
+            '--prometheus_host',
+            net.prom_placement().server.host.ip(),
             '--prometheus_port',
             str(net.prom_placement().server.port),
         ]
         if self.service_type("servers") == "hydroflow":
             server_proc = self.provisioner.popen_hydroflow(bench, 'servers', 1, shared_server_args)
 
+        bench.log("Reconfiguring the system for a new benchmark")
         endpoints = self.provisioner.rebuild(1, {"clients": ["servers"], "servers": ["clients"]})
         net.update(endpoints)
-        input("wait")
+        bench.log("Reconfiguration completed")
 
         # If we're monitoring the code, run garbage collection verbosely.
         java = ['java']
@@ -141,8 +145,6 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                     net.placement().server.host.ip(),
                     '--port',
                     str(net.placement().server.port),
-                    '--prometheus_host',
-                    net.prom_placement().server.host.ip(),
                 ] + shared_server_args,
             )
             if inp.profiled:
@@ -160,7 +162,7 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                     ],
                     'echo_server': [
                         f'{net.prom_placement().server.host.ip()}:' +
-                        f'{net.prom_placement().server.host.port()}'
+                        f'{net.prom_placement().server.port}'
                     ],
                 })
             bench.write_string('prometheus.yml', yaml.dump(prometheus_config))

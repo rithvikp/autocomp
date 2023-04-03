@@ -128,10 +128,11 @@ class HydroState(State):
             f.truncate()
             json.dump(self.cluster_definition(), f)
 
-    def _new_prometheus_port(self) -> int:
-        p = self._next_prometheus_port
-        self._next_prometheus_port += 1
-        return p
+    def hosts(self, f: int) -> Dict[str, List[host.PartialEndpoint]]:
+        hosts = {}
+        for role, machines in self._machines[str(f)].items():
+            hosts[role] = [host.PartialEndpoint(self._conn_cache.connect(m.internal_ip), None) for m in machines]
+        return hosts
 
     def _ssh_connect(self, address: str) -> host.Host:
         tries = 0
@@ -143,17 +144,17 @@ class HydroState(State):
                 client.set_missing_host_key_policy(paramiko.client.AutoAddPolicy)
 
                 if self._identity_file:
-                    client.connect(address, key_filename=self._identity_file, username="hydro")
+                    client.connect(address, key_filename=self._identity_file, username="rithvik")
                 else:
                     client.connect(address)
+                return host.RemoteHost(client)
             except:
                 print(f'Attempt to connect to instance {address} failed. Retrying after delay...')
                 tries += 1
                 time.sleep(10)
-                continue
-            break
 
-        return host.RemoteHost(client)
+        raise Exception(f'Failed to connect to instance {address} after 5 attempts')
+
 
     def reset_services(self):
         self._service_exists = {}
@@ -195,6 +196,7 @@ class HydroState(State):
                         image=image,
                         region=config["env"]["zone"],
                         network=gcp_vpc,
+                        user=config["env"]["user"],
                     )
                     custom_services.append(deployment.CustomService(machine, []))
 
@@ -208,7 +210,6 @@ class HydroState(State):
             raise ValueError("No machines were provisioned")
         self._identity_file = last_machine.ssh_key_path
     
-        print("Finished provisioning initial resources")
 
     def cluster_definition(self) -> Dict[str, Dict[str, List[str]]]:
         clusters: Dict[str, Dict[str, List[str]]] = {}
@@ -287,7 +288,7 @@ class HydroState(State):
         return proc.HydroflowProc(receiver)
 
     def post_benchmark(self):
-        self.reset_service_exists()
+        self.reset_services()
 
     def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Dict[str, List[host.PartialEndpoint]]:
         # Create faux services for any scala services
@@ -323,8 +324,6 @@ class HydroState(State):
                             self._custom_ports[receiver][sender] = []
                         self._custom_ports[receiver][sender].append(port)
                         receivers.append(port)
-
-                print(receiver, sender, receivers, sender_hf, receiver_hf)
 
                 for s in self._services[sender]:
                     if sender_hf:
