@@ -10,7 +10,7 @@ enum Service {
 struct Args {
     #[clap(long, default_value = "0.0.0.0")]
     prometheus_host: String,
-    #[clap(long, default_value = "8009")]
+    #[clap(long, default_value = "-1")]
     prometheus_port: i32,
     #[clap(subcommand)]
     service: Service,

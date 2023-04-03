@@ -251,7 +251,7 @@ class Suite(Generic[Input, Output]):
             self._args.cluster = self._f.name
             self.provisioner = provision.do(self.cluster_config, self.cluster_spec, self.args())
 
-            self._args["identity_file"] = self.provisioner.identity_file()
+            self._args.identity_file = self.provisioner.identity_file()
             
 
     # `args` returns a set of global arguments, typically passed in via the

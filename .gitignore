@@ -239,3 +239,4 @@ dmypy.json
 .metals/
 .bloop/
 metals.sbt
+.hydro

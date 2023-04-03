@@ -203,7 +203,7 @@ class HydroflowProc(Proc):
     
     def kill(self) -> None:
         # FIXME[Hydro CLI]: Terminate the process
-        pass
+        self._service = None
     
     def cmd(self) ->  str:
         raise NotImplementedError("Hydro CLI deployments do not support the cmd command")

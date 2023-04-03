@@ -9,6 +9,8 @@ import re
 from . import proc
 from . import host
 from . import cluster
+import time
+import asyncio
 
 # GENERAL NOTES ABOUT PROVISIONING. Please read.
 #
@@ -106,7 +108,7 @@ class HydroState(State):
             raise ValueError(f'Unsupported cloud for Hydro CLI deployments: {config["env"]["cloud"]}')
 
         # Mapping from f to role to machines
-        self._hosts: Dict[str, Dict[str, List[hydro.GCPComputeEngineHost]]] = {}
+        self._machines: Dict[str, Dict[str, List[hydro.GCPComputeEngineHost]]] = {}
         self._identity_file = ""
 
         hydro.async_wrapper.run(self._configure, None)
@@ -132,17 +134,27 @@ class HydroState(State):
         return p
 
     def _ssh_connect(self, address: str) -> host.Host:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.client.AutoAddPolicy)
-        if self.args()['identity_file']:
-            client.connect(address, key_filename=self.args()['identity_file'])
-        else:
-            client.connect(address)
+        tries = 0
+        # Unfortunately, there seems to somtimes be a delay between a VM starting up and it being
+        # accessible via SSH, so wait and then retry if a connection attempt fails.
+        while tries < 5:
+            try:
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.client.AutoAddPolicy)
+
+                if self._identity_file:
+                    client.connect(address, key_filename=self._identity_file, username="hydro")
+                else:
+                    client.connect(address)
+            except:
+                print(f'Attempt to connect to instance {address} failed. Retrying after delay...')
+                tries += 1
+                time.sleep(10)
+                continue
+            break
+
         return host.RemoteHost(client)
 
-    def identity_file(self) -> str:
-        return self._identity_file
-    
     def reset_services(self):
         self._service_exists = {}
         self._services = {}
@@ -165,15 +177,16 @@ class HydroState(State):
         self._gcp_vpc = gcp_vpc
 
         last_machine = None
+        custom_services = []
         for f, cluster in self._spec.items():
-            self._hosts[f] = {}
+            self._machines[f] = {}
             for role, count in cluster.items():
                 hydroflow = config["services"][role]["type"] == "hydroflow"
                 if hydroflow:
                     image = config["env"]["hydroflow_image"]
                 else:
                     image = config["env"]["scala_image"]
-                self._hosts[f][role] = []
+                self._machines[f][role] = []
 
                 for i in range(count):
                     machine = deployment.GCPComputeEngineHost(
@@ -183,7 +196,9 @@ class HydroState(State):
                         region=config["env"]["zone"],
                         network=gcp_vpc,
                     )
-                    self._hosts[f][role].append(machine)
+                    custom_services.append(deployment.CustomService(machine, []))
+
+                    self._machines[f][role].append(machine)
                     last_machine = machine
                         
         await deployment.deploy()
@@ -197,7 +212,7 @@ class HydroState(State):
 
     def cluster_definition(self) -> Dict[str, Dict[str, List[str]]]:
         clusters: Dict[str, Dict[str, List[str]]] = {}
-        for f, cluster in self._hosts.items():
+        for f, cluster in self._machines.items():
             clusters[f] = {}
             for role, hosts in cluster.items():
                 clusters[f][role] = []
@@ -227,12 +242,12 @@ class HydroState(State):
     #     role, index = self._parse_label(label)
     #     assert self._config["services"][role]["type"] == "scala"
 
-    #     machine = self._hosts[str(f)][role][index]
+    #     machine = self._machines[str(f)][role][index]
     #     svc_index = len(self._services[role]) 
     #     self._services[role].append(hydro.CustomService())
 
     #     def start() -> proc.Proc:
-    #         machine = self._hosts[str(f)][role][index]
+    #         machine = self._machines[str(f)][role][index]
     #         return bench.popen(
     #             host = self._conn_cache.connect(machine.internal_ip),
     #             label = label,
@@ -248,24 +263,23 @@ class HydroState(State):
     #     return p
 
     
-    # It is assumed that label is of the form f"{role_singular}_{index}"
-    def popen_hydroflow(self, bench, label: str, f: int, args: Callable[[int], List[str]]) -> proc.Proc:
+    # It is assumed that label is of the form f"{role}_{index}"
+    def popen_hydroflow(self, bench, label: str, f: int, args: List[str]) -> proc.Proc:
         """Start a new hydroflow program on a free machine.
         """
         role, index = self._parse_label(label)
         assert self._config["services"][role]["type"] == "hydroflow"
 
         example = self._config["services"][role]["rust_example"]
-        machine = self._hosts[str(f)][role][index]
+        machine = self._machines[str(f)][role][index]
 
         # FIXME[Hydro CLI]: Pipe stdout/stderr to files
         stdout = bench.abspath(f'{label}_out.txt')
         stderr = bench.abspath(f'{label}_err.txt')
-        prom_port = self._new_prometheus_port()
         receiver = self._deployment.HydroflowCrate(
-            src=str((Path(__file__).parent / "rust").absolute()),
+            src=str((Path(__file__).parent.parent / "rust").absolute()),
             example=example,
-            args = args(prom_port),
+            args = args,
             on=machine,
         )
         self._services[role].append(receiver)
@@ -275,43 +289,61 @@ class HydroState(State):
     def post_benchmark(self):
         self.reset_service_exists()
 
-    def rebuild(self, f: int, connections: Dict[str, str]) -> Dict[str, List[host.PartialEndpoint]]:
+    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Dict[str, List[host.PartialEndpoint]]:
         # Create faux services for any scala services
-        for role, spec in self._config["services"]:
+        for role, spec in self._config["services"].items():
             if spec["type"] != "scala":
                 continue
-            for hosts in self._hosts[str(f)][role]:
-                self._services[role].append(hydro.CustomService())
+            for machine in self._machines[str(f)][role]:
+                self._services[role].append(self._deployment.CustomService(machine, []))
 
-        for sender, receiver in connections.items():
-            if sender not in self._services:
-                continue
-                
-            port_name = "broadcast"
-            sender_hf = self._config["services"][sender]["type"] == "hydroflow"
-            receiver_hf = self._config["services"][receiver]["type"] == "hydroflow"
+        self._custom_ports: Dict[str, Dict[str, List[hydro.CustomServicePort]]] = {}
 
-            if receiver_hf:
-                receivers = [n.ports[port_name].merge() for n in self._services[role]]
-            else:
-                receivers = [n.client_port() for n in self._services[role]]
+        for sender, conn_receivers in connections.items():
+            for receiver in conn_receivers:
+                assert sender in self._services, f"Sender {sender} is not a valid role"
 
-            for s in self._services[sender]:
-                if sender_hf:
-                    sender.ports[port_name].send_to(hydro.demux({
+                sender_hf = self._config["services"][sender]["type"] == "hydroflow"
+                receiver_hf = self._config["services"][receiver]["type"] == "hydroflow"
+                if not sender_hf and not receiver_hf:
+                    continue
+
+                if receiver_hf:
+                    receivers = [getattr(n.ports, f'receive_from${sender}').merge() for n in self._services[receiver]]
+                else:
+                    if receiver not in connections or sender not in connections[receiver]:
+                        raise ValueError(f"A scala process that receives from a hydroflow process must also "+
+                                         "send to it: {receiver} does not satisfy this criteria.")
+                    receivers = []
+                    for n in self._services[receiver]:
+                        port = n.client_port()
+                        if receiver not in self._custom_ports:
+                            self._custom_ports[receiver] = {}
+                        if sender not in self._custom_ports[receiver]:
+                            self._custom_ports[receiver][sender] = []
+                        self._custom_ports[receiver][sender].append(port)
+                        receivers.append(port)
+
+                print(receiver, sender, receivers, sender_hf, receiver_hf)
+
+                for s in self._services[sender]:
+                    if sender_hf:
+                        sender_port = getattr(s.ports, f'send_to${receiver}')
+                    else:
+                        sender_port = s.client_port()
+
+                    sender_port.send_to(hydro.demux({
                         i: r for i, r in enumerate(receivers)
                     }))
-                else:
-                    for r in receivers:
-                        s.client_port().send_to(r)
-
-        hydro.async_wrapper.run(self._redeploy_and_start, connections)
+        
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        hydro.async_wrapper.run(self._redeploy_and_start, None)
 
         endpoints: Dict[str, List[host.PartialEndpoint]] = {}
-        for role, spec in self._config["services"]:
+        for role, spec in self._config["services"].items():
             endpoints[role] = []
             if spec["type"] == "scala":
-                for machine in self._hosts[str(f)][role]:
+                for machine in self._machines[str(f)][role]:
                     endpoints[role].append(host.PartialEndpoint(
                         host=self._conn_cache.connect(machine.internal_ip),
                         port=None,
@@ -323,14 +355,22 @@ class HydroState(State):
 
         return endpoints
 
-    async def _redeploy_and_start(self, connections):
+    async def _redeploy_and_start(self, _):
         # FIXME[Hydro CLI]: Re-deploy
         await self._deployment.deploy()
 
         await self._deployment.start()
+
+        for role, ports in self._custom_ports.items():
+            print(f"\n===========\n{role}\n===========")
+            for sender, ports in ports.items():
+                print(f"\n{sender}")
+                for port in ports:
+                    print((await port.server_port()).json())
     
     def stop(self):
+        self._custom_ports = {}
         self._services = None
-        self._hosts = None
+        self._machines = None
         self._gcp_vpc = None
         self._deployment = None

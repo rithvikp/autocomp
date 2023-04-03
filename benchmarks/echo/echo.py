@@ -50,13 +50,36 @@ Output = benchmark.RecorderOutput
 
 # Networks #####################################################################
 class EchoNet:
-    def __init__(self, input: Input, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
-        self._input = input
+    def __init__(self, inp: Input):
+        self._input = inp
+        self._endpoints = None
+
+    def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
         self._endpoints = endpoints
 
     class Placement(NamedTuple):
         client: host.Endpoint
         server: host.Endpoint
+
+    def prom_placement(self) -> Placement:
+        ports = itertools.count(40001, 100)
+
+        def portify_one(role: str, index: int) -> host.Endpoint:
+            if not self._input.monitored:
+                return host.Endpoint(host.LocalHost(), -1)
+
+            if self._endpoints is None:
+                return host.Endpoint(host.LocalHost(), next(ports))
+
+            e = self._endpoints[role][index]
+            if e.port is None:
+                return host.Endpoint(e.host, next(ports))
+            return e
+
+        return self.Placement(
+            client=portify_one('clients', 0),
+            server=portify_one('servers', 0),
+        )
 
     def placement(self) -> Placement:
         ports = itertools.count(10000, 100)
@@ -74,28 +97,26 @@ class EchoNet:
 
 # Suite ########################################################################
 class EchoSuite(benchmark.Suite[Input, Output]):
-    def __init__(self) -> None:
-        super().__init__()
-        self._cluster = cluster.Cluster.from_json_file(self.args()['cluster'],
-                                                       self._connect)
-
-    def _connect(self, address: str) -> host.Host:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.client.AutoAddPolicy)
-        if self.args()['identity_file']:
-            client.connect(address, key_filename=self.args()['identity_file'])
-        else:
-            client.connect(address)
-        return host.RemoteHost(client)
-
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
-                      args: Dict[Any, Any], input: Input) -> Output:
-        endpoints = self.provisioner.rebuild(1, {"clients": "servers", "servers": "clients"})
-        net = EchoNet(input, endpoints)
+                      args: Dict[Any, Any], inp: Input) -> Output:
+        net = EchoNet(inp)
+
+        shared_server_args = [
+            '--persist_log',
+            'true' if inp.persistLog else 'false',
+            '--prometheus_port',
+            str(net.prom_placement().server.port),
+        ]
+        if self.service_type("servers") == "hydroflow":
+            server_proc = self.provisioner.popen_hydroflow(bench, 'servers', 1, shared_server_args)
+
+        endpoints = self.provisioner.rebuild(1, {"clients": ["servers"], "servers": ["clients"]})
+        net.update(endpoints)
+        input("wait")
 
         # If we're monitoring the code, run garbage collection verbosely.
         java = ['java']
-        if input.monitored:
+        if inp.monitored:
             java += [
                 '-verbose:gc',
                 '-XX:-PrintGC',
@@ -105,21 +126,10 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 '-XX:+PrintGCDateStamps',
             ]
         # Increase the heap size.
-        java += [f'-Xms{input.jvm_heap_size}', f'-Xmx{input.jvm_heap_size}']
+        java += [f'-Xms{inp.jvm_heap_size}', f'-Xmx{inp.jvm_heap_size}']
 
-        # Launch server.
-        shared_server_args = [
-            '--persist_log',
-            'true' if input.persistLog else 'false',
-            '--prometheus_host',
-            net.placement().server.host.ip(),
-            '--prometheus_port',
-            str(net.placement().server.port +
-                1) if input.monitored else '-1',
-        ]
-        if self.service_type("servers") == "hydro":
-            server_proc = self.provisioner.popen_hydroflow(bench, f'server', 1, shared_server_args)
-        else:
+        # Launch server.   
+        if self.service_type("servers") == "scala":
             server_proc = bench.popen(
                 host=net.placement().server.host,
                 label=f'server',
@@ -131,24 +141,26 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                     net.placement().server.host.ip(),
                     '--port',
                     str(net.placement().server.port),
+                    '--prometheus_host',
+                    net.prom_placement().server.host.ip(),
                 ] + shared_server_args,
             )
-            if input.profiled:
+            if inp.profiled:
                 server_proc = perf_util.JavaPerfProc(bench,
                                                     net.placement().server.host,
                                                     server_proc, f'server')
         bench.log('Server started.')
 
         # Launch Prometheus.
-        if input.monitored:
+        if inp.monitored:
             prometheus_config = prometheus.prometheus_config(
-                int(input.prometheus_scrape_interval.total_seconds() * 1000), {
+                int(inp.prometheus_scrape_interval.total_seconds() * 1000), {
                     'echo_client': [
-                        f'{net.placement().client.host.ip()}:{net.placement().client.port+1}'
+                        f'{net.prom_placement().client.host.ip()}:{net.prom_placement().client.port}'
                     ],
                     'echo_server': [
-                        f'{net.placement().server.host.ip()}:' +
-                        f'{net.placement().server.port+1}'
+                        f'{net.prom_placement().server.host.ip()}:' +
+                        f'{net.prom_placement().server.host.port()}'
                     ],
                 })
             bench.write_string('prometheus.yml', yaml.dump(prometheus_config))
@@ -163,7 +175,7 @@ class EchoSuite(benchmark.Suite[Input, Output]):
             )
             bench.log('Prometheus started.')
 
-        time.sleep(input.client_lag.total_seconds())
+        time.sleep(inp.client_lag.total_seconds())
         bench.log('Client lag ended.')
 
         # Launch the client
@@ -188,36 +200,36 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 '--server_port',
                 str(net.placement().server.port),
                 '--duration',
-                f'{input.duration.total_seconds()}s',
+                f'{inp.duration.total_seconds()}s',
                 '--timeout',
-                f'{input.timeout.total_seconds()}s',
+                f'{inp.timeout.total_seconds()}s',
                 '--num_clients',
-                f'{input.num_clients_per_proc}',
+                f'{inp.num_clients_per_proc}',
                 '--num_warmup_clients',
-                f'{input.num_clients_per_proc}',
+                f'{inp.num_clients_per_proc}',
                 '--warmup_duration',
-                f'{input.warmup_duration.total_seconds()}s',
+                f'{inp.warmup_duration.total_seconds()}s',
                 '--warmup_timeout',
-                f'{input.warmup_timeout.total_seconds()}s',
+                f'{inp.warmup_timeout.total_seconds()}s',
                 '--warmup_sleep',
-                f'{input.warmup_sleep.total_seconds()}s',
+                f'{inp.warmup_sleep.total_seconds()}s',
                 '--output_file',
                 bench.abspath(f'client_data.csv'),
                 '--prometheus_host',
-                client.host.ip(),
+                net.prom_placement().client.host.ip(),
                 '--prometheus_port',
-                str(client.port+1) if input.monitored else '-1',
+                str(net.prom_placement().client.port),
             ])
-        if input.profiled:
+        if inp.profiled:
             client_proc = perf_util.JavaPerfProc(
                 bench, client.host, client_proc, f'client')
 
-        bench.log(f'Clients started and running for {input.duration}.')
+        bench.log(f'Clients started and running for {inp.duration}.')
 
         # Wait for the client to finish and then terminate the server.
         client_proc.wait()
         server_proc.kill()
-        if input.monitored:
+        if inp.monitored:
              prometheus_server.kill()
 
         bench.log('Clients finished and processes terminated.')
