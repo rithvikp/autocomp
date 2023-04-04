@@ -21,7 +21,7 @@ object LeaderMain extends App {
   )
 
   val parser = new scopt.OptionParser[Flags]("") {
-    opt[File]("config").action((x, f) => f.copy(configFile = x))
+    opt[File]("config").required().action((x, f) => f.copy(configFile = x))
     opt[LogLevel]("log_level").action((x, f) => f.copy(logLevel = x))
     opt[String]("prometheus_host")
       .action((x, f) => f.copy(prometheusHost = x))

@@ -30,10 +30,11 @@ import yaml
 class Input(NamedTuple):
     # System-wide parameters. ##################################################
     num_clients_per_proc: int
+    num_replicas: int
     jvm_heap_size: str
+    log_level: str
 
     # Benchmark parameters. ####################################################
-    persistLog: bool
     duration: datetime.timedelta
     timeout: datetime.timedelta
     warmup_duration: datetime.timedelta
@@ -49,7 +50,7 @@ Output = benchmark.RecorderOutput
 
 
 # Networks #####################################################################
-class EchoNet:
+class VotingNet:
     def __init__(self, inp: Input, endpoints: Dict[str, List[host.PartialEndpoint]]):
         self._input = inp
         self._endpoints = endpoints
@@ -59,19 +60,23 @@ class EchoNet:
 
     class Placement(NamedTuple):
         client: host.Endpoint
-        server: host.Endpoint
+        leader: host.Endpoint
+        replicas: List[host.Endpoint]
 
     def prom_placement(self) -> Placement:
         ports = itertools.count(40001, 100)
 
-        def portify_one(role: str, index: int) -> host.Endpoint:
-            e = self._endpoints[role][index]
-
+        def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
 
+        def portify(role: str, n: int) -> List[host.Endpoint]:
+            assert n <= len(self._endpoints[role])
+            return [portify_one(e) for e in self._endpoints[role][:n]]
+        
         return self.Placement(
-            client=portify_one('clients', 0),
-            server=portify_one('servers', 0),
+            client=portify_one(self._endpoints['clients'][0]),
+            leader=portify_one(self._endpoints['leaders'][0]),
+            replicas=portify('replicas', self._input.num_replicas),
         )
 
     def placement(self) -> Placement:
@@ -82,41 +87,78 @@ class EchoNet:
                 return host.Endpoint(e.host, next(ports))
             return e
 
+        def portify(role: str, n: int) -> List[host.Endpoint]:
+            assert n <= len(self._endpoints[role])
+            return [portify_one(e) for e in self._endpoints[role][:n]]
+
         return self.Placement(
             client=portify_one(self._endpoints['clients'][0]),
-            server=portify_one(self._endpoints['servers'][0]),
+            leader=portify_one(self._endpoints['leaders'][0]),
+            replicas=portify('replicas', self._input.num_replicas),
         )
+
+    def config(self) -> proto_util.Message:
+        return {
+            'replica_address': [{
+                'host': e.host.ip(),
+                'port': e.port,
+            } for e in self.placement().replicas],
+            'leader_address': {
+                'host': self.placement().leader.host.ip(),
+                'port': self.placement().leader.port,
+            }
+        }
 
 
 # Suite ########################################################################
-class EchoSuite(benchmark.Suite[Input, Output]):
+class VotingSuite(benchmark.Suite[Input, Output]):
     def cluster_spec(self) -> Dict[str, Dict[str, int]]:
         return {
             '1': {
-                'servers': 1,
+                'leaders': 1,
+                'replicas': 5, # Max across any benchmark
                 'clients': 1,
             },
         }
 
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], inp: Input) -> Output:
-        net = EchoNet(inp, self.provisioner.hosts(1))
+        net = VotingNet(inp, self.provisioner.hosts(1))
 
-        shared_server_args = [
-            '--persist_log',
-            'true' if inp.persistLog else 'false',
-            '--prometheus_host',
-            net.prom_placement().server.host.ip(),
-            '--prometheus_port',
-            str(net.prom_placement().server.port),
-        ]
-        if self.service_type("servers") == "hydroflow":
-            server_proc = self.provisioner.popen_hydroflow(bench, 'servers', 1, shared_server_args)
+        if self.service_type("leaders") == "hydroflow":
+            leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
+                '--prometheus_host',
+                net.prom_placement().leader.host.ip(),
+                '--prometheus_port',
+                str(net.prom_placement().leader.port),
+                '--log_level',
+                inp.log_level,
+            ])
+        
+        if self.service_type("replicas") == "hydroflow":
+            replica_procs: List[proc.Proc] = []
+            for (i, replica) in enumerate(net.placement().replicas):
+                replica_procs.append(self.provisioner.popen_hydroflow(bench, 'replicas', 1,[
+                    '--index',
+                    str(i),
+                    '--prometheus_host',
+                    replica.host.ip(),
+                    '--prometheus_port',
+                    str(replica.port),
+                    '--log_level',
+                    inp.log_level,
+                ]))
 
         bench.log("Reconfiguring the system for a new benchmark")
-        endpoints = self.provisioner.rebuild(1, {"clients": ["servers"], "servers": ["clients"]})
+        endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients"], "replicas": ["leaders"], "leaders": ["replicas"]})
         net.update(endpoints)
         bench.log("Reconfiguration completed")
+
+        config = net.config()
+        config_filename = bench.abspath('config.pbtxt')
+        bench.write_string(config_filename,
+                           proto_util.message_to_pbtext(config))
+        bench.log('Config file config.pbtxt written.')
 
         # If we're monitoring the code, run garbage collection verbosely.
         java = ['java']
@@ -132,38 +174,75 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         # Increase the heap size.
         java += [f'-Xms{inp.jvm_heap_size}', f'-Xmx{inp.jvm_heap_size}']
 
-        # Launch server.   
-        if self.service_type("servers") == "scala":
-            server_proc = bench.popen(
-                host=net.placement().server.host,
-                label=f'servers',
+        # Launch leader.   
+        if self.service_type("leaders") == "scala":
+            leader_proc = bench.popen(
+                host=net.placement().leader.host,
+                label=f'leaders',
                 cmd=java + [
                     '-cp',
                     os.path.abspath(args['jar']),
-                    'frankenpaxos.echo.BenchmarkServerMain',
-                    '--host',
-                    net.placement().server.host.ip(),
-                    '--port',
-                    str(net.placement().server.port),
-                ] + shared_server_args,
+                    'frankenpaxos.voting.LeaderMain',
+                    '--config',
+                    config_filename,
+                    '--prometheus_host',
+                    net.prom_placement().leader.host.ip(),
+                    '--prometheus_port',
+                    str(net.prom_placement().leader.port),
+                    '--log_level',
+                    inp.log_level,
+                ]
             )
             if inp.profiled:
-                server_proc = perf_util.JavaPerfProc(bench,
-                                                    net.placement().server.host,
-                                                    server_proc, f'servers')
-        bench.log('Server started.')
+                leader_proc = perf_util.JavaPerfProc(bench,
+                                                    net.placement().leader.host,
+                                                    leader_proc, f'leaders')
+        bench.log('Leader started.')
+
+        # Launch replicas
+        if self.service_type("replicas") == "scala":
+            replica_procs: List[proc.Proc] = []
+            for (i, replica) in enumerate(net.placement().replicas):
+                replica_proc = bench.popen(
+                    host=replica.host,
+                    label=f'replicas_{i}',
+                    cmd=java + [
+                        '-cp',
+                        os.path.abspath(args['jar']),
+                        'frankenpaxos.voting.ReplicaMain',
+                        '--config',
+                        config_filename,
+                        '--index',
+                        str(i),
+                        '--prometheus_host',
+                        net.prom_placement().replicas[i].host.ip(),
+                        '--prometheus_port',
+                        str(net.prom_placement().replicas[i].port),
+                        '--log_level',
+                        inp.log_level,
+                    ],
+                )
+                if inp.profiled:
+                    replica_proc = perf_util.JavaPerfProc(bench, replica.host,
+                                                        replica_proc, f'replicas_{i}')
+                replica_procs.append(replica_proc)
+        bench.log('Replicas started.')
 
         # Launch Prometheus.
         if inp.monitored:
             prometheus_config = prometheus.prometheus_config(
                 int(inp.prometheus_scrape_interval.total_seconds() * 1000), {
-                    'echo_client': [
+                    'voting_client': [
                         f'{net.prom_placement().client.host.ip()}:{net.prom_placement().client.port}'
                     ],
-                    'echo_server': [
-                        f'{net.prom_placement().server.host.ip()}:' +
-                        f'{net.prom_placement().server.port}'
+                    'voting_leader': [
+                        f'{net.prom_placement().leader.host.ip()}:' +
+                        f'{net.prom_placement().leader.port}'
                     ],
+                    'voting_replica': [
+                        f'{e.host.ip()}:{e.port}'
+                        for e in net.prom_placement().replicas
+                    ]
                 })
             bench.write_string('prometheus.yml', yaml.dump(prometheus_config))
             prometheus_server = bench.popen(
@@ -184,7 +263,7 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         client = net.placement().client
         client_proc = bench.popen(
             host=client.host,
-            label=f'client',
+            label=f'clients',
             # TODO(mwhittaker): For now, we don't run clients with large
             # heaps and verbose garbage collection because they are all
             # colocated on one machine.
@@ -192,15 +271,13 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 'java',
                 '-cp',
                 os.path.abspath(args['jar']),
-                'frankenpaxos.echo.BenchmarkClientMain',
+                'frankenpaxos.voting.ClientMain',
                 '--host',
                 client.host.ip(),
                 '--port',
                 str(client.port),
-                '--server_host',
-                net.placement().server.host.ip(),
-                '--server_port',
-                str(net.placement().server.port),
+                '--config',
+                config_filename,
                 '--duration',
                 f'{inp.duration.total_seconds()}s',
                 '--timeout',
@@ -221,16 +298,20 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 net.prom_placement().client.host.ip(),
                 '--prometheus_port',
                 str(net.prom_placement().client.port),
+                '--log_level',
+                inp.log_level,
             ])
         if inp.profiled:
             client_proc = perf_util.JavaPerfProc(
-                bench, client.host, client_proc, f'client')
+                bench, client.host, client_proc, f'clients')
 
         bench.log(f'Clients started and running for {inp.duration}.')
 
         # Wait for the client to finish and then terminate the server.
         client_proc.wait()
-        server_proc.kill()
+        leader_proc.kill()
+        for p in replica_procs:
+             p.kill()
         if inp.monitored:
              prometheus_server.kill()
 

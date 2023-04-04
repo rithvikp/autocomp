@@ -119,10 +119,6 @@ class HydroState(State):
 
         self._conn_cache = cluster._RemoteHostCache(self._ssh_connect)
 
-        # FIXME[Hydro CLI]: This is a hack until we can reserve ports before deploying.
-        self._next_prometheus_port = 64000
-        self._prometheus_endpoints: Dict[str, List[host.Endpoint]] = {}
-
         # Write out the new cluster definition
         with open(args['cluster'], 'w+') as f:
             f.truncate()
@@ -159,8 +155,6 @@ class HydroState(State):
     def reset_services(self):
         self._service_exists = {}
         self._services = {}
-        self._next_prometheus_port = 64000
-        self._prometheus_endpoints = {}
         for _, cluster in self._spec.items():
             for role, _ in cluster.items():
                 self._service_exists[role] = set()
@@ -237,33 +231,6 @@ class HydroState(State):
 
         return role, index
 
-    
-    # # It is assumed that label is of the form f"{role}_{index}"
-    # def popen(self, bench, label: str, f: int, cmd: Callable[[int], str]) -> proc.Proc:
-    #     role, index = self._parse_label(label)
-    #     assert self._config["services"][role]["type"] == "scala"
-
-    #     machine = self._machines[str(f)][role][index]
-    #     svc_index = len(self._services[role]) 
-    #     self._services[role].append(hydro.CustomService())
-
-    #     def start() -> proc.Proc:
-    #         machine = self._machines[str(f)][role][index]
-    #         return bench.popen(
-    #             host = self._conn_cache.connect(machine.internal_ip),
-    #             label = label,
-    #             cmd = cmd(self._new_prometheus_port())
-    #         )
-
-    #     p = proc.CustomProc(machine, start)
-    #     self._custom_procs[role].append(p)
-
-    #     if self._new_changes_deployed:
-    #         p.deploy()
-
-    #     return p
-
-    
     # It is assumed that label is of the form f"{role}_{index}"
     def popen_hydroflow(self, bench, label: str, f: int, args: List[str]) -> proc.Proc:
         """Start a new hydroflow program on a free machine.
@@ -355,7 +322,6 @@ class HydroState(State):
         return endpoints
 
     async def _redeploy_and_start(self, _):
-        # FIXME[Hydro CLI]: Re-deploy
         await self._deployment.deploy()
 
         await self._deployment.start()

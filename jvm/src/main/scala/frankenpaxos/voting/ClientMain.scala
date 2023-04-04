@@ -33,7 +33,6 @@ object ClientMain extends App {
       warmupTimeout: Duration = 0 seconds,
       warmupSleep: java.time.Duration = java.time.Duration.ofSeconds(0),
       numWarmupClients: Int = 1,
-      outputFilePrefix: String = "",
       // Monitoring.
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009
@@ -42,7 +41,8 @@ object ClientMain extends App {
   val parser = new scopt.OptionParser[Flags]("") {
     opt[String]("host").action((x, f) => f.copy(host = x))
     opt[Int]("port").action((x, f) => f.copy(port = x))
-    opt[LogLevel]("log_level").required().action((x, f) => f.copy(logLevel = x))
+    opt[File]("config").required().action((x, f) => f.copy(configFile = x))
+    opt[LogLevel]("log_level").action((x, f) => f.copy(logLevel = x))
     opt[java.time.Duration]("duration").action((x, f) => f.copy(duration = x))
     opt[Duration]("timeout").action((x, f) => f.copy(timeout = x))
     opt[Int]("num_clients").action((x, f) => f.copy(numClients = x))
@@ -51,7 +51,6 @@ object ClientMain extends App {
     opt[Duration]("warmup_timeout").required().action((x, f) => f.copy(warmupTimeout = x))
     opt[java.time.Duration]("warmup_sleep").action((x, f) => f.copy(warmupSleep = x))
     opt[Int]("num_warmup_clients").action((x, f) => f.copy(numWarmupClients = x))
-    opt[String]("outputFilePrefix").action((x, f) => f.copy(outputFilePrefix = x))
     opt[String]("prometheus_host")
       .action((x, f) => f.copy(prometheusHost = x))
     opt[Int]("prometheus_port")
