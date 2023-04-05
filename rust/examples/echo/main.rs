@@ -1,19 +1,23 @@
 use clap::Parser;
 mod server;
 
-#[derive(clap::Subcommand, Debug)]
+#[derive(clap::ValueEnum, Debug, Clone)]
 enum Service {
-    Server(server::ServerArgs),
+    Server,
 }
 
 #[derive(Parser, Debug)]
 struct Args {
+    #[clap(long)]
+    service: Service,
+
     #[clap(long, default_value = "0.0.0.0")]
     prometheus_host: String,
     #[clap(long, default_value = "-1")]
     prometheus_port: i32,
-    #[clap(subcommand)]
-    service: Service,
+
+    #[clap(flatten)]
+    server: server::ServerArgs,
 }
 
 #[tokio::main]
@@ -22,6 +26,6 @@ async fn main() {
     frankenpaxos::serve_prometheus(args.prometheus_host, args.prometheus_port);
 
     match args.service {
-        Service::Server(cfg) => server::run_server(cfg).await,
+        Service::Server => server::run_server(args.server).await,
     };
 }

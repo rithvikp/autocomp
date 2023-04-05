@@ -33,7 +33,8 @@ class Input(NamedTuple):
     jvm_heap_size: str
 
     # Benchmark parameters. ####################################################
-    persistLog: bool
+    persist_log: bool
+    flush_every_n: int
     duration: datetime.timedelta
     timeout: datetime.timedelta
     warmup_duration: datetime.timedelta
@@ -102,16 +103,16 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                       args: Dict[Any, Any], inp: Input) -> Output:
         net = EchoNet(inp, self.provisioner.hosts(1))
 
-        shared_server_args = [
-            '--persist_log',
-            'true' if inp.persistLog else 'false',
-            '--prometheus_host',
-            net.prom_placement().server.host.ip(),
-            '--prometheus_port',
-            str(net.prom_placement().server.port),
-        ]
         if self.service_type("servers") == "hydroflow":
-            server_proc = self.provisioner.popen_hydroflow(bench, 'servers', 1, shared_server_args)
+            server_proc = self.provisioner.popen_hydroflow(bench, 'servers', 1, [ 
+                '--service',
+                'server',
+                '--prometheus-host',
+                net.prom_placement().server.host.ip(),
+                '--prometheus-port',
+                str(net.prom_placement().server.port),
+            ] +
+            (['--persist-log'] if inp.persist_log else []))
 
         bench.log("Reconfiguring the system for a new benchmark")
         endpoints = self.provisioner.rebuild(1, {"clients": ["servers"], "servers": ["clients"]})
@@ -145,7 +146,15 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                     net.placement().server.host.ip(),
                     '--port',
                     str(net.placement().server.port),
-                ] + shared_server_args,
+                    '--persist_log',
+                    'true' if inp.persist_log else 'false',
+                    '--flush_every_n',
+                    str(inp.flush_every_n),
+                    '--prometheus_host',
+                    net.prom_placement().server.host.ip(),
+                    '--prometheus_port',
+                    str(net.prom_placement().server.port),
+                ],
             )
             if inp.profiled:
                 server_proc = perf_util.JavaPerfProc(bench,
@@ -217,6 +226,8 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 f'{inp.warmup_sleep.total_seconds()}s',
                 '--output_file',
                 bench.abspath(f'client_data.csv'),
+                '--flush_every_n',
+                str(inp.flush_every_n),
                 '--prometheus_host',
                 net.prom_placement().client.host.ip(),
                 '--prometheus_port',

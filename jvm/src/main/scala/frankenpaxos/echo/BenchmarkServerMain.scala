@@ -15,6 +15,7 @@ object BenchmarkServerMain extends App {
       host: String = "localhost",
       port: Int = 9000,
       persistLog: Boolean = false,
+      flushEveryN: Int = 1,
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009
   )
@@ -23,6 +24,7 @@ object BenchmarkServerMain extends App {
     opt[String]("host").action((x, f) => f.copy(host = x))
     opt[Int]("port").action((x, f) => f.copy(port = x))
     opt[Boolean]("persist_log").action((x, f) => f.copy(persistLog = x))
+    opt[Int]("flush_every_n").action((x, f) => f.copy(flushEveryN = x))
     opt[String]("prometheus_host")
       .action((x, f) => f.copy(prometheusHost = x))
     opt[Int]("prometheus_port")
@@ -43,6 +45,7 @@ object BenchmarkServerMain extends App {
     address = NettyTcpAddress(new InetSocketAddress(flags.host, flags.port)),
     transport = new NettyTcpTransport(logger),
     persistLog = flags.persistLog,
+    flushEveryN = flags.flushEveryN,
     logger = logger
   )
 

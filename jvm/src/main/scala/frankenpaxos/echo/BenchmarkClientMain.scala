@@ -33,7 +33,8 @@ object BenchmarkClientMain extends App {
       warmupSleep: java.time.Duration = java.time.Duration.ofSeconds(0),
       numWarmupClients: Int = 1,
       prometheusHost: String = "0.0.0.0",
-      prometheusPort: Int = 8009
+      prometheusPort: Int = 8009,
+      flushEveryN: Int = 1
   )
 
   val parser = new scopt.OptionParser[Flags]("") {
@@ -51,6 +52,7 @@ object BenchmarkClientMain extends App {
     opt[Int]("num_warmup_clients").action((x, f) => f.copy(numWarmupClients = x))
     opt[String]("prometheus_host").action((x, f) => f.copy(prometheusHost = x))
     opt[Int]("prometheus_port").action((x, f) => f.copy(prometheusPort = x)).text("-1 to disable")
+    opt[Int]("flush_every_n").action((x, f) => f.copy(flushEveryN = x))
   }
 
   val flags: Flags = parser.parse(args, Flags()) match {
@@ -69,7 +71,8 @@ object BenchmarkClientMain extends App {
       new InetSocketAddress(flags.serverHost, flags.serverPort)
     ),
     transport = transport,
-    logger = logger
+    logger = logger,
+    flushEveryN = flags.flushEveryN
   )
 
   // Run clients.

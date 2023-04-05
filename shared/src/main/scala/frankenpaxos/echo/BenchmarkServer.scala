@@ -39,6 +39,7 @@ class BenchmarkServer[Transport <: frankenpaxos.Transport[Transport]](
     address: Transport#Address,
     transport: Transport,
     persistLog: Boolean,
+    flushEveryN: Int,
     logger: Logger,
     metrics: BenchmarkServerMetrics = new BenchmarkServerMetrics(
       PrometheusCollectors
@@ -46,6 +47,8 @@ class BenchmarkServer[Transport <: frankenpaxos.Transport[Transport]](
 ) extends Actor(address, transport, logger) {
   override type InboundMessage = BenchmarkServerInbound
   override def serializer = BenchmarkServer.serializer
+
+  private var unflushedMessages = 0
 
   case class LogEntry(
       client: ByteString,
@@ -70,6 +73,12 @@ class BenchmarkServer[Transport <: frankenpaxos.Transport[Transport]](
       )
     }
 
-    client.send(BenchmarkClientInbound(id = request.id))
+    if (unflushedMessages < flushEveryN - 1) {
+      client.sendNoFlush(BenchmarkClientInbound(id = request.id))
+      unflushedMessages += 1
+    } else {
+      client.send(BenchmarkClientInbound(id = request.id))
+      unflushedMessages = 0
+    }
   }
 }

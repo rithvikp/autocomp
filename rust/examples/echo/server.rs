@@ -13,7 +13,7 @@ pub struct ServerArgs {
 pub async fn run_server(cfg: ServerArgs) {
     let mut ports = hydroflow::util::cli::init().await;
     let broadcast_recv = ports
-        .remove("broadcast")
+        .remove("receive_from$clients")
         .unwrap()
         .connect::<ConnectedBidi>()
         .await

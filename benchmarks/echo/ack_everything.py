@@ -14,7 +14,8 @@ class AckEverythingEchoSuite(EchoSuite):
             return Input(
                 num_clients_per_proc=clients,
                 jvm_heap_size='100m',
-                persistLog=self._persist,
+                persist_log=self._persist,
+                flush_every_n=1, # Do not change, flush_every_n does not work for this benchmark
                 duration=datetime.timedelta(seconds=10),
                 timeout=datetime.timedelta(seconds=3),
                 warmup_duration=datetime.timedelta(seconds=3),

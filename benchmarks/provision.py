@@ -46,7 +46,7 @@ class State:
     def post_benchmark(self):
         pass
 
-    def rebuild(self, f: int, connections: Dict[str, str]) -> Dict[str, List[host.PartialEndpoint]]:
+    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Dict[str, List[host.PartialEndpoint]]:
         pass
 
     def stop(self):
@@ -192,7 +192,10 @@ class HydroState(State):
                         network=gcp_vpc,
                         user=config["env"]["user"],
                     )
-                    custom_services.append(deployment.CustomService(machine, []))
+
+                    # FIXME[Hydro CLI]: Change this once ports can be opened after a machine
+                    # is started or port opening can be disabled when creating HydroflowCrate services.
+                    custom_services.append(deployment.CustomService(machine, [22]))
 
                     self._machines[f][role].append(machine)
                     last_machine = machine
@@ -315,7 +318,7 @@ class HydroState(State):
                         port=None,
                     ))
             elif spec["type"] == "hydroflow":
-                pass
+                endpoints[role] = self._hydroflow_endpoints[role]
             else:
                 raise ValueError(f"Unrecognized service type for role {role}: {spec['type']}")
 
@@ -323,15 +326,24 @@ class HydroState(State):
 
     async def _redeploy_and_start(self, _):
         await self._deployment.deploy()
-
         await self._deployment.start()
+        self._hydroflow_endpoints: Dict[str, List[host.PartialEndpoint]] = {}
 
-        for role, ports in self._custom_ports.items():
-            print(f"\n===========\n{role}\n===========")
+        for _, ports in self._custom_ports.items():
             for sender, ports in ports.items():
-                print(f"\n{sender}")
+                assert sender not in self._hydroflow_endpoints, "A hydroflow process can only talk to one scala process"
+                self._hydroflow_endpoints[sender] = []
+
                 for port in ports:
-                    print((await port.server_port()).json())
+                    addr = (await port.server_port()).json()['TcpPort']
+                    decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
+                    assert decomposed_addr is not None, f"Could not parse address {addr}"
+                    
+                    self._hydroflow_endpoints[sender].append(host.PartialEndpoint(
+                        host.FakeHost(decomposed_addr[1]),
+                        int(decomposed_addr[2]),
+                    ))
+
     
     def stop(self):
         self._custom_ports = {}

@@ -29,7 +29,8 @@ class BenchmarkClient[Transport <: frankenpaxos.Transport[Transport]](
     srcAddress: Transport#Address,
     dstAddress: Transport#Address,
     transport: Transport,
-    logger: Logger
+    logger: Logger,
+    flushEveryN: Int
 ) extends Actor(srcAddress, transport, logger) {
   override type InboundMessage = BenchmarkClientInbound
   override def serializer = BenchmarkClient.serializer
@@ -39,6 +40,7 @@ class BenchmarkClient[Transport <: frankenpaxos.Transport[Transport]](
 
   private var id: Long = 0
   private val promises = mutable.Map[Long, Promise[Unit]]()
+  private var unflushedMessages = 0
 
   override def receive(src: Transport#Address, reply: InboundMessage): Unit = {
     promises.get(reply.id) match {
@@ -51,8 +53,17 @@ class BenchmarkClient[Transport <: frankenpaxos.Transport[Transport]](
   }
 
   def echoImpl(promise: Promise[Unit]): Unit = {
-    server.send(BenchmarkServerInbound(id = id))
+    val msg = BenchmarkServerInbound(id = id)
     promises(id) = promise
+
+    if (unflushedMessages < flushEveryN - 1) {
+      server.sendNoFlush(msg)
+      unflushedMessages += 1
+    } else {
+      server.send(msg)
+      unflushedMessages = 0
+    }
+
     id += 1
   }
 
