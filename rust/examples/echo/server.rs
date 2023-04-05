@@ -1,5 +1,5 @@
 use hydroflow::util::{
-    cli::{Connected, ConnectedBidi},
+    cli::{ConnectedBidi, ConnectedSource},
     deserialize_from_bytes,
 };
 use hydroflow_datalog::datalog;
@@ -17,7 +17,7 @@ pub async fn run_server(cfg: ServerArgs) {
         .unwrap()
         .connect::<ConnectedBidi>()
         .await
-        .take_source();
+        .into_source();
 
     if cfg.persist_log {
         // TODO: Do something

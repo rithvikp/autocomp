@@ -75,6 +75,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "auto_impl"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a8c1df849285fbacd587de7818cc7d13be6cd2cbcd47a04fb1801b0e2706e33"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -571,6 +583,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures",
+ "pin-project",
  "serde",
  "serde_json",
  "tempfile",
@@ -617,8 +630,10 @@ dependencies = [
 name = "hydroflow_lang"
 version = "0.1.0"
 dependencies = [
+ "auto_impl",
  "hydroflow_internalmacro",
  "once_cell",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -899,6 +914,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pin-project"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad29a609b6bcd67fee905812e544992d216af9d755757c05ed2d0e15a74c6ecc"
+dependencies = [
+ "pin-project-internal",
+]
+
+[[package]]
+name = "pin-project-internal"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "069bdb1e05adc7a8990dce9cc75370895fbe4e3d58b9b73bf1aee56359344a55"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1121,9 +1156,9 @@ checksum = "456c603be3e8d448b072f410900c09faf164fbce2d480456f50eea6e25f9c848"
 
 [[package]]
 name = "rust-sitter"
-version = "0.2.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82d426082c513c74f49791a4c9555c535e03a45748a9beaa3fcf581ab818f468"
+checksum = "2dde883cc26efebad05b018863c06b2d2004915d3f0d75dc62a208d3b7b91127"
 dependencies = [
  "rust-sitter-macro",
  "tree-sitter-c2rust",
@@ -1131,9 +1166,9 @@ dependencies = [
 
 [[package]]
 name = "rust-sitter-common"
-version = "0.2.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a894db745435c9f90c89a00a59a0d74e35105fc692509f16501ab95caa7bea49"
+checksum = "09465c7945d523df2d183379e87954e813432e7b0613048afe548b560ad67077"
 dependencies = [
  "quote",
  "syn",
@@ -1141,9 +1176,9 @@ dependencies = [
 
 [[package]]
 name = "rust-sitter-macro"
-version = "0.2.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e5d2f279c0bf469ef14efc61daa97673faa134c80b229ee58c9675cf40a726f"
+checksum = "981712251a9b1b5005f4daa34cc4eded8a8a99dede6adab3f212871045b16901"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1153,9 +1188,9 @@ dependencies = [
 
 [[package]]
 name = "rust-sitter-tool"
-version = "0.2.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d3cdfda85f8ef50b32459fccfbf8c97f718125f78a950fee6c997c627894fc9"
+checksum = "0455092fcce2f769dceafb71348b80377ea31d6cf844a7c010ced8501da3be72"
 dependencies = [
  "cc",
  "rust-sitter-common",
