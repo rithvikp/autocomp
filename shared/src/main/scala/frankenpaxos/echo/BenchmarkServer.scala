@@ -56,13 +56,16 @@ class BenchmarkServer[Transport <: frankenpaxos.Transport[Transport]](
   )
 
   private val log = mutable.ArrayBuffer[LogEntry]()
+  private val clients = mutable.Map[Transport#Address, Chan[BenchmarkClient[Transport]]]()
 
   override def receive(
       src: Transport#Address,
       request: BenchmarkServerInbound
   ): Unit = {
-    val client =
+    val client = clients.getOrElseUpdate(
+      src,
       chan[BenchmarkClient[Transport]](src, BenchmarkClient.serializer)
+    )
     metrics.echoRequestsTotal.inc()
 
     if (persistLog) {

@@ -140,12 +140,11 @@ class HydroState(State):
                 client.set_missing_host_key_policy(paramiko.client.AutoAddPolicy)
 
                 if self._identity_file:
-                    client.connect(address, key_filename=self._identity_file, username="rithvik")
+                    client.connect(address, key_filename=self._identity_file, username=self._config["env"]["user"])
                 else:
                     client.connect(address)
                 return host.RemoteHost(client)
             except:
-                print(f'Attempt to connect to instance {address} failed. Retrying after delay...')
                 tries += 1
                 time.sleep(10)
 
@@ -270,6 +269,9 @@ class HydroState(State):
 
         self._custom_ports: Dict[str, Dict[str, List[hydro.CustomServicePort]]] = {}
 
+        # Only create custom port <--> hydroflow mappings if the sender is a custom service and the receiver
+        # is a hydroflow service. The hydroflow service will internally use this channel in a bidirectional
+        # manner.
         for sender, conn_receivers in connections.items():
             for receiver in conn_receivers:
                 assert sender in self._services, f"Sender {sender} is not a valid role"
@@ -278,28 +280,30 @@ class HydroState(State):
                 receiver_hf = self._config["services"][receiver]["type"] == "hydroflow"
                 if not sender_hf and not receiver_hf:
                     continue
+                if sender_hf and not receiver_hf:
+                    assert receiver in connections and sender in connections[receiver], (f"A scala "+
+                        f"process that receives from a hydroflow process must also send to it: {receiver} "+
+                        f"does not satisfy this criteria.")
+                    continue
+
+                # After this point, the sender is either custom or hf but the receiver is only hf
 
                 if receiver_hf:
                     receivers = [getattr(n.ports, f'receive_from${sender}').merge() for n in self._services[receiver]]
                 else:
-                    if receiver not in connections or sender not in connections[receiver]:
-                        raise ValueError(f"A scala process that receives from a hydroflow process must also "+
-                                         "send to it: {receiver} does not satisfy this criteria.")
-                    receivers = []
-                    for n in self._services[receiver]:
-                        port = n.client_port()
-                        if receiver not in self._custom_ports:
-                            self._custom_ports[receiver] = {}
-                        if sender not in self._custom_ports[receiver]:
-                            self._custom_ports[receiver][sender] = []
-                        self._custom_ports[receiver][sender].append(port)
-                        receivers.append(port)
+                    raise ValueError("This branch should never be taken due to earlier filtering")
 
                 for s in self._services[sender]:
                     if sender_hf:
                         sender_port = getattr(s.ports, f'send_to${receiver}')
                     else:
                         sender_port = s.client_port()
+
+                        if sender not in self._custom_ports:
+                            self._custom_ports[sender] = {}
+                        if receiver not in self._custom_ports[sender]:
+                            self._custom_ports[sender][receiver] = []
+                        self._custom_ports[sender][receiver].append(sender_port)
 
                     sender_port.send_to(hydro.demux({
                         i: r for i, r in enumerate(receivers)
@@ -318,6 +322,13 @@ class HydroState(State):
                         port=None,
                     ))
             elif spec["type"] == "hydroflow":
+                if role not in self._hydroflow_endpoints:
+                    for _ in range(len(self._services[role])):
+                        endpoints[role].append(host.PartialEndpoint(
+                            host=host.FakeHost("<handled by Hydro CLI>"),
+                            port=None,
+                        ))
+                    continue
                 endpoints[role] = self._hydroflow_endpoints[role]
             else:
                 raise ValueError(f"Unrecognized service type for role {role}: {spec['type']}")
@@ -329,20 +340,28 @@ class HydroState(State):
         await self._deployment.start()
         self._hydroflow_endpoints: Dict[str, List[host.PartialEndpoint]] = {}
 
-        for _, ports in self._custom_ports.items():
-            for sender, ports in ports.items():
-                assert sender not in self._hydroflow_endpoints, "A hydroflow process can only talk to one scala process"
-                self._hydroflow_endpoints[sender] = []
-
+        for sender, ports in self._custom_ports.items():
+            # Sender is always a custom service and receiver is always a hydroflow service
+            assert len(ports) == 1, "A scala process can currently only talk to a single hydroflow process"
+            for receiver, ports in ports.items():
+                assert len(ports) == 1, "A scala process can currently only talk to a single hydroflow process"
                 for port in ports:
-                    addr = (await port.server_port()).json()['TcpPort']
-                    decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
-                    assert decomposed_addr is not None, f"Could not parse address {addr}"
-                    
-                    self._hydroflow_endpoints[sender].append(host.PartialEndpoint(
-                        host.FakeHost(decomposed_addr[1]),
-                        int(decomposed_addr[2]),
-                    ))
+                    addrs = (await port.server_port()).json()['Demux']
+                    assert len(addrs) == len(self._services[receiver]), (f"The number of "+
+                        f"addresses does not match the number of nodes with the role {receiver}.")
+                    assert receiver not in self._hydroflow_endpoints, (f"Multiple scala processes cannot "+
+                        f"currently communicate with the same hydroflow process: {receiver}")
+
+                    self._hydroflow_endpoints[receiver] = [None]*len(addrs)
+                    for index, addr in addrs.items():
+                        addr = addr["TcpPort"]
+                        decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
+                        assert decomposed_addr is not None, f"Could not parse address {addr}"
+                        
+                        self._hydroflow_endpoints[receiver][index] = host.PartialEndpoint(
+                            host.FakeHost(decomposed_addr[1]),
+                            int(decomposed_addr[2]),
+                        )
 
     
     def stop(self):
