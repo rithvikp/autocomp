@@ -31,7 +31,10 @@ class AckEverythingEchoSuite(EchoSuite):
 
         return [
             gen_input(10),
-        ]
+            gen_input(25),
+            gen_input(75),
+            gen_input(100),
+        ]*2
 
         # return [
         #     gen_input(10),

@@ -12,18 +12,32 @@ from . import cluster
 import time
 import asyncio
 
-# GENERAL NOTES ABOUT PROVISIONING. Please read.
-#
-# Hydro CLI provisioning assumes either all services are Scala or all services
-# except for the client are Hydroflow (and the client is Scala).
-#
-# It is assumed that label is of the form f"{role_singular}_{index}"
-#
-# Changes to make to individual suites:
-# 1. Fork startup code to start java or hf processes, based on configuration
-# 2. Call self.provisioner.rebuild() before client lag (and starting clients).
-# 3. If the return value is not None, reconfigure the placement (need to write a new
-#    custom_placement method) and re-write the config file before starting clients.
+"""
+GENERAL NOTES ABOUT PROVISIONING. Please read.
+
+Hydro CLI provisioning assumes either all services are Scala or all services
+except for the client are Hydroflow (and the client is Scala).
+
+Changes to make to individual suites:
+1. Add a cluster_spec method.
+2. Remove the constructor and the _connect method.
+3. Update the net to take in partial endpoints (and have an update method).
+```
+    def __init__(self, input: Input, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
+        self._input = input
+        self._endpoints = endpoints
+    
+    def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
+        self._endpoints = endpoints
+```
+   Then update the placement method to use these endpoints, assigning ports only if necessary.
+4. Add a prom_placement method to the net.
+
+2. Fork startup code to start java or hf processes, based on configuration
+3. Call self.provisioner.rebuild() before client lag (and starting clients).
+4. If the return value is not None, reconfigure the placement (need to write a new
+   custom_placement method) and re-write the config file before starting clients.
+"""
 
 class State:
     def __init__(self, config: Dict[str, Any], spec: Dict[str, Dict[str, int]], args):
@@ -65,10 +79,10 @@ def do(config: Dict[str, Any], spec: Dict[str, Dict[str, int]], args) -> State:
     else:
         raise ValueError(f'Unsupported mode: {config["mode"]}')
 
-    cluster = state.cluster_definition()
-    with open(args['cluster'], 'w+') as f:
-        f.truncate()
-        json.dump(cluster, f)
+    # cluster = state.cluster_definition()
+    # with open(args['cluster'], 'w+') as f:
+    #     f.truncate()
+    #     json.dump(cluster, f)
 
     return state
 
@@ -108,7 +122,7 @@ class HydroState(State):
             raise ValueError(f'Unsupported cloud for Hydro CLI deployments: {config["env"]["cloud"]}')
 
         # Mapping from f to role to machines
-        self._machines: Dict[str, Dict[str, List[hydro.GCPComputeEngineHost]]] = {}
+        self._machines: Dict[str, Dict[str, List[hydro.Host]]] = {}
         self._identity_file = ""
 
         hydro.async_wrapper.run(self._configure, None)
@@ -118,16 +132,28 @@ class HydroState(State):
         self.reset_services()
 
         self._conn_cache = cluster._RemoteHostCache(self._ssh_connect)
+        self._connect_to_all()
 
         # Write out the new cluster definition
-        with open(args['cluster'], 'w+') as f:
-            f.truncate()
-            json.dump(self.cluster_definition(), f)
+        # with open(args['cluster'], 'w+') as f:
+        #     f.truncate()
+        #     json.dump(self.cluster_definition(), f)
+    
+    def _internal_ip(self, m: hydro.Host) -> str:
+        if hasattr(m, 'internal_ip'):
+            return m.internal_ip
+        return 'localhost'
+    
+    def _connect_to_all(self):
+        for _, machines in self._machines.items():
+            for _, machines in machines.items():
+                for m in machines:
+                    self._conn_cache.connect(self._internal_ip(m))
 
     def hosts(self, f: int) -> Dict[str, List[host.PartialEndpoint]]:
         hosts = {}
         for role, machines in self._machines[str(f)].items():
-            hosts[role] = [host.PartialEndpoint(self._conn_cache.connect(m.internal_ip), None) for m in machines]
+            hosts[role] = [host.PartialEndpoint(self._conn_cache.connect(self._internal_ip(m)), None) for m in machines]
         return hosts
 
     def _ssh_connect(self, address: str) -> host.Host:
@@ -214,7 +240,7 @@ class HydroState(State):
             for role, hosts in cluster.items():
                 clusters[f][role] = []
                 for host in hosts:
-                    clusters[f][role].append(host.internal_ip)
+                    clusters[f][role].append(self._internal_ip(host))
 
         return clusters
     
@@ -267,11 +293,8 @@ class HydroState(State):
             for machine in self._machines[str(f)][role]:
                 self._services[role].append(self._deployment.CustomService(machine, []))
 
-        self._custom_ports: Dict[str, Dict[str, List[hydro.CustomServicePort]]] = {}
+        self._custom_ports: Dict[str, Dict[str, List[hydro.CustomServicePort]]] = {"send": {}, "receive": {}}
 
-        # Only create custom port <--> hydroflow mappings if the sender is a custom service and the receiver
-        # is a hydroflow service. The hydroflow service will internally use this channel in a bidirectional
-        # manner.
         for sender, conn_receivers in connections.items():
             for receiver in conn_receivers:
                 assert sender in self._services, f"Sender {sender} is not a valid role"
@@ -280,34 +303,37 @@ class HydroState(State):
                 receiver_hf = self._config["services"][receiver]["type"] == "hydroflow"
                 if not sender_hf and not receiver_hf:
                     continue
-                if sender_hf and not receiver_hf:
-                    assert receiver in connections and sender in connections[receiver], (f"A scala "+
-                        f"process that receives from a hydroflow process must also send to it: {receiver} "+
-                        f"does not satisfy this criteria.")
-                    continue
-
-                # After this point, the sender is either custom or hf but the receiver is only hf
 
                 if receiver_hf:
                     receivers = [getattr(n.ports, f'receive_from${sender}').merge() for n in self._services[receiver]]
                 else:
-                    raise ValueError("This branch should never be taken due to earlier filtering")
+                    assert sender not in self._custom_ports["receive"], f"Hyrdoflow process {sender} can only send to one custom service"
+                    self._custom_ports["receive"][sender] = []
+                    receivers = []
+                    for s in self._services[receiver]:
+                        receiver_port = s.client_port()
+                        receivers.append(receiver_port)
+                        self._custom_ports["receive"][sender].append(receiver_port)
 
-                for s in self._services[sender]:
-                    if sender_hf:
+                senders = []
+                if sender_hf:
+                    for s in self._services[sender]:
                         sender_port = getattr(s.ports, f'send_to${receiver}')
-                    else:
+                        senders.append(sender)
+                else:
+                    assert receiver not in self._custom_ports["send"], f"Hydroflow process {receiver} can only receive from one custom service"
+                    self._custom_ports["send"][receiver] = []
+
+                    for s in self._services[sender]:
                         sender_port = s.client_port()
+                        self._custom_ports["send"][receiver].append(sender_port)
+                        senders.append(sender)
 
-                        if sender not in self._custom_ports:
-                            self._custom_ports[sender] = {}
-                        if receiver not in self._custom_ports[sender]:
-                            self._custom_ports[sender][receiver] = []
-                        self._custom_ports[sender][receiver].append(sender_port)
-
-                    sender_port.send_to(hydro.demux({
-                        i: r for i, r in enumerate(receivers)
-                    }))
+                hydro.mux({
+                    i: s for i, s in enumerate(senders)
+                }).send_to(hydro.demux({
+                    i: r for i, r in enumerate(receivers)
+                }))
         
         asyncio.set_event_loop(asyncio.new_event_loop())
         hydro.async_wrapper.run(self._redeploy_and_start, None)
@@ -318,7 +344,7 @@ class HydroState(State):
             if spec["type"] == "scala":
                 for machine in self._machines[str(f)][role]:
                     endpoints[role].append(host.PartialEndpoint(
-                        host=self._conn_cache.connect(machine.internal_ip),
+                        host=self._conn_cache.connect(self._internal_ip(machine)),
                         port=None,
                     ))
             elif spec["type"] == "hydroflow":
@@ -339,29 +365,48 @@ class HydroState(State):
         await self._deployment.deploy()
         await self._deployment.start()
         self._hydroflow_endpoints: Dict[str, List[host.PartialEndpoint]] = {}
+        self._hydroflow_sender_endpoints: Dict[str, List[host.Endpoint]] = {}
 
-        for sender, ports in self._custom_ports.items():
+        for receiver, ports in self._custom_ports["send"].items():
             # Sender is always a custom service and receiver is always a hydroflow service
             assert len(ports) == 1, "A scala process can currently only talk to a single hydroflow process"
-            for receiver, ports in ports.items():
-                assert len(ports) == 1, "A scala process can currently only talk to a single hydroflow process"
-                for port in ports:
-                    addrs = (await port.server_port()).json()['Demux']
-                    assert len(addrs) == len(self._services[receiver]), (f"The number of "+
-                        f"addresses does not match the number of nodes with the role {receiver}.")
-                    assert receiver not in self._hydroflow_endpoints, (f"Multiple scala processes cannot "+
-                        f"currently communicate with the same hydroflow process: {receiver}")
+            for port in ports:
+                addrs = (await port.server_port()).json()['Demux']
+                assert len(addrs) == len(self._services[receiver]), (f"The number of "+
+                    f"addresses does not match the number of nodes with the role {receiver}.")
+                assert receiver not in self._hydroflow_endpoints, (f"Multiple scala processes cannot "+
+                    f"currently communicate with the same hydroflow process: {receiver}")
 
-                    self._hydroflow_endpoints[receiver] = [None]*len(addrs)
-                    for index, addr in addrs.items():
-                        addr = addr["TcpPort"]
-                        decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
-                        assert decomposed_addr is not None, f"Could not parse address {addr}"
-                        
-                        self._hydroflow_endpoints[receiver][index] = host.PartialEndpoint(
-                            host.FakeHost(decomposed_addr[1]),
-                            int(decomposed_addr[2]),
-                        )
+                self._hydroflow_endpoints[receiver] = [None]*len(addrs)
+                for index, addr in addrs.items():
+                    addr = addr["TcpPort"]
+                    decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
+                    assert decomposed_addr is not None, f"Could not parse address {addr}"
+                    
+                    self._hydroflow_endpoints[receiver][index] = host.PartialEndpoint(
+                        host.FakeHost(decomposed_addr[1]),
+                        int(decomposed_addr[2]),
+                    )
+        for sender, ports in self._custom_ports["receive"].items():
+            # Sender is always a hydroflow service and receiver is always a custom service
+            assert len(ports) == 1, "A scala process can currently only talk to a single hydroflow process"
+            for port in ports:
+                addrs = (await port.server_port()).json()['Mux']
+                assert len(addrs) == len(self._services[sender]), (f"The number of "+
+                    f"addresses does not match the number of nodes with the role {sender}.")
+                assert sender not in self._hydroflow_sender_endpoints, (f"Multiple scala processes cannot "+
+                    f"currently communicate with the same hydroflow process: {sender}")
+
+                self._hydroflow_sender_endpoints[sender] = [None]*len(addrs)
+                for index, addr in addrs.items():
+                    addr = addr["TcpPort"]
+                    decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
+                    assert decomposed_addr is not None, f"Could not parse address {addr}"
+                    
+                    self._hydroflow_sender_endpoints[sender][index] = host.Endpoint(
+                        host.FakeHost(decomposed_addr[1]),
+                        int(decomposed_addr[2]),
+                    )
 
     
     def stop(self):

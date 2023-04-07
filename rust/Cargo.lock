@@ -374,6 +374,7 @@ dependencies = [
 name = "frankenpaxos"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "clap 4.1.8",
  "hydroflow",
  "hydroflow_datalog",

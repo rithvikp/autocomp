@@ -70,9 +70,12 @@ Output = benchmark.RecorderOutput
 
 # Networks #####################################################################
 class UnreplicatedNet:
-    def __init__(self, cluster: cluster.Cluster, input: Input) -> None:
-        self._cluster = cluster.f(1)
+    def __init__(self, input: Input, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
         self._input = input
+        self._endpoints = endpoints
+    
+    def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
+        self._endpoints = endpoints
 
     class Placement(NamedTuple):
         clients: List[host.Endpoint]
@@ -81,38 +84,30 @@ class UnreplicatedNet:
     def placement(self) -> Placement:
         ports = itertools.count(10000, 100)
 
-        def portify_one(h: host.Host) -> host.Endpoint:
-            return host.Endpoint(h, next(ports))
+        def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
+            if e.port is None:
+                return host.Endpoint(e.host, next(ports))
+            return e
 
-        def portify(hosts: List[host.Host]) -> List[host.Endpoint]:
-            return [portify_one(h) for h in hosts]
-
-        def cycle_take_n(n: int, hosts: List[host.Host]) -> List[host.Host]:
-            return list(itertools.islice(itertools.cycle(hosts), n))
+        def portify(role: str, n: int) -> List[host.Endpoint]:
+            assert n <= len(self._endpoints[role])
+            return [portify_one(e) for e in self._endpoints[role][:n]]
 
         return self.Placement(
-            clients=portify(
-                cycle_take_n(self._input.num_client_procs,
-                             self._cluster['clients'])),
-            server=portify_one(self._cluster['server'][0]),
+            clients=portify('clients',self._input.num_client_procs),
+            server=portify_one(self._endpoints['server'][0]),
         )
 
 
 # Suite ########################################################################
 class UnreplicatedSuite(benchmark.Suite[Input, Output]):
-    def __init__(self) -> None:
-        super().__init__()
-        self._cluster = cluster.Cluster.from_json_file(self.args()['cluster'],
-                                                       self._connect)
-
-    def _connect(self, address: str) -> host.Host:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.client.AutoAddPolicy)
-        if self.args()['identity_file']:
-            client.connect(address, key_filename=self.args()['identity_file'])
-        else:
-            client.connect(address)
-        return host.RemoteHost(client)
+    def cluster_spec(self) -> Dict[str, Dict[str, int]]:
+        return {
+            '1': {
+                'clients': self.args().num_client_procs,
+                'server': 1
+            }
+        }
 
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], input: Input) -> Output:
