@@ -18,9 +18,9 @@ GENERAL NOTES ABOUT PROVISIONING. Please read.
 Hydro CLI provisioning assumes either all services are Scala or all services
 except for the client are Hydroflow (and the client is Scala).
 
-Changes to make to individual suites:
-1. Add a cluster_spec method.
-2. Remove the constructor and the _connect method.
+Instead of modifying existing experiments, simply add a new one for hydroflow with the following changes:
+1. Add a cluster_spec method to the specific suite.
+2. Remove the constructor and the _connect method to the overall benchmark.
 3. Update the net to take in partial endpoints (and have an update method).
 ```
     def __init__(self, input: Input, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
@@ -30,12 +30,12 @@ Changes to make to individual suites:
     def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
         self._endpoints = endpoints
 ```
-   Then update the placement method to use these endpoints, assigning ports only if necessary.
-4. Add a prom_placement method to the net.
-5. Add special startup code for any hydroflow processes
-6. After this startup code, call provisioner.rebuild and update the net's endpoints.
-7. Update scala startup code to only run for scala services.
-8. Temporarily, update the benchmark to set _args in the constructor and then call the super constructor.
+4. Update the placement method to use these endpoints, assigning ports only if necessary.
+5. Add a prom_placement method to the net.
+6. Add special startup code for any hydroflow processes.
+7. After this startup code, call provisioner.rebuild and update the net's endpoints.
+8. Only keep scala startup code for the client.
+9. Temporarily, update the benchmark to set _args in the constructor and then call the super constructor.
 """
 
 class State:
@@ -53,14 +53,11 @@ class State:
     def popen_hydroflow(self, bench, label: str, f: int, args: List[str]) -> proc.Proc:
         raise NotImplementedError()
 
-    # def popen(self, bench, label: str, f: int, cmd: str) -> proc.Proc:
-        # raise NotImplementedError()
-
     def post_benchmark(self):
         pass
 
     def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Dict[str, List[host.PartialEndpoint]]:
-        pass
+        raise NotImplementedError()
 
     def stop(self):
         pass
@@ -68,7 +65,6 @@ class State:
 
 def do(config: Dict[str, Any], spec: Dict[str, Dict[str, int]], args) -> State:
     if config["mode"] == "manual":
-        raise ValueError("FIXME")
         if config["env"]["cloud"] == "gcp":
             state: State = ManualState(config, spec, args)
         else:
@@ -132,6 +128,10 @@ class HydroState(State):
 
         self._conn_cache = cluster._RemoteHostCache(self._ssh_connect)
         self._connect_to_all()
+    
+    def identity_file(self) -> str:
+        assert self._identity_file != ""
+        return self._identity_file
 
     def _internal_ip(self, m: hydro.Host) -> str:
         if hasattr(m, 'internal_ip'):

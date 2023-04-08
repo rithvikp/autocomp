@@ -249,6 +249,7 @@ class Suite(Generic[Input, Output]):
         else:
             assert 'cluster' in args and args['cluster'] is not None, 'Must specify cluster config or cluster'
             print("Using a manually provisionsed cluster")
+            raise ValueError("Temp")
 
 
     # `args` returns a set of global arguments, typically passed in via the
