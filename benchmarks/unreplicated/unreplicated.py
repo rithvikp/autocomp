@@ -80,6 +80,21 @@ class UnreplicatedNet:
     class Placement(NamedTuple):
         clients: List[host.Endpoint]
         server: host.Endpoint
+    
+    def prom_placement(self) -> Placement:
+        ports = itertools.count(40001, 100)
+
+        def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
+            return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
+
+        def portify(role: str, n: int) -> List[host.Endpoint]:
+            assert n <= len(self._endpoints[role])
+            return [portify_one(e) for e in self._endpoints[role][:n]]
+        
+        return self.Placement(
+            clients=portify('clients',self._input.num_client_procs),
+            server=portify_one(self._endpoints['server'][0]),
+        )
 
     def placement(self) -> Placement:
         ports = itertools.count(10000, 100)
@@ -104,14 +119,21 @@ class UnreplicatedSuite(benchmark.Suite[Input, Output]):
     def cluster_spec(self) -> Dict[str, Dict[str, int]]:
         return {
             '1': {
-                'clients': self.args().num_client_procs,
+                'clients': 14,
                 'server': 1
             }
         }
 
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], input: Input) -> Output:
-        net = UnreplicatedNet(self._cluster, input)
+        net = UnreplicatedNet(input, self.provisioner.hosts(1))
+
+        # FIXME: HF startup
+
+        bench.log("Reconfiguring the system for a new benchmark")
+        endpoints = self.provisioner.rebuild(1, {"clients": ["server"], "server": ["clients"]})
+        net.update(endpoints)
+        bench.log("Reconfiguration completed")
 
         # If we're monitoring the code, run garbage collection verbosely.
         java = ['java']

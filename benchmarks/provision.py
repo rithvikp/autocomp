@@ -32,11 +32,10 @@ Changes to make to individual suites:
 ```
    Then update the placement method to use these endpoints, assigning ports only if necessary.
 4. Add a prom_placement method to the net.
-
-2. Fork startup code to start java or hf processes, based on configuration
-3. Call self.provisioner.rebuild() before client lag (and starting clients).
-4. If the return value is not None, reconfigure the placement (need to write a new
-   custom_placement method) and re-write the config file before starting clients.
+5. Add special startup code for any hydroflow processes
+6. After this startup code, call provisioner.rebuild and update the net's endpoints.
+7. Update scala startup code to only run for scala services.
+8. Temporarily, update the benchmark to set _args in the constructor and then call the super constructor.
 """
 
 class State:
@@ -79,10 +78,10 @@ def do(config: Dict[str, Any], spec: Dict[str, Dict[str, int]], args) -> State:
     else:
         raise ValueError(f'Unsupported mode: {config["mode"]}')
 
-    # cluster = state.cluster_definition()
-    # with open(args['cluster'], 'w+') as f:
-    #     f.truncate()
-    #     json.dump(cluster, f)
+    cluster = state.cluster_definition()
+    with open(args['cluster'], 'w+') as f:
+        f.truncate()
+        json.dump(cluster, f)
 
     return state
 
@@ -134,11 +133,6 @@ class HydroState(State):
         self._conn_cache = cluster._RemoteHostCache(self._ssh_connect)
         self._connect_to_all()
 
-        # Write out the new cluster definition
-        # with open(args['cluster'], 'w+') as f:
-        #     f.truncate()
-        #     json.dump(self.cluster_definition(), f)
-    
     def _internal_ip(self, m: hydro.Host) -> str:
         if hasattr(m, 'internal_ip'):
             return m.internal_ip
