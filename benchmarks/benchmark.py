@@ -239,16 +239,17 @@ class Suite(Generic[Input, Output]):
         if 'cluster_config' in args and args['cluster_config'] is not None:
             with open(args['cluster_config'], 'r') as f:
                 self.cluster_config = json.load(f)
+
+            # Provision instances if necessary
+            self._f = tempfile.NamedTemporaryFile()   
+            self._args.cluster = self._f.name
+            self.provisioner = provision.do(self.cluster_config, self.cluster_spec(), self.args())
+
+            self._args.identity_file = self.provisioner.identity_file()
         else:
-            raise ValueError('Running experiments with a manual configuration is currently not supported.')
+            assert 'cluster' in args and args['cluster'] is not None, 'Must specify cluster config or cluster'
+            print("Using a manually provisionsed cluster")
 
-        # Provision instances if necessary
-        self._f = tempfile.NamedTemporaryFile()   
-        self._args.cluster = self._f.name
-        self.provisioner = provision.do(self.cluster_config, self.cluster_spec(), self.args())
-
-        self._args.identity_file = self.provisioner.identity_file()
-            
 
     # `args` returns a set of global arguments, typically passed in via the
     # command line.
