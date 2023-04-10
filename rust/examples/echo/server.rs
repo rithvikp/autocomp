@@ -1,6 +1,5 @@
-use hydroflow::{
-    hydroflow_syntax,
-    util::cli::{ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource, ConnectedTagged},
+use hydroflow::util::cli::{
+    launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource, ConnectedTagged,
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
@@ -46,7 +45,7 @@ pub async fn run_server(cfg: ServerArgs) {
         // TODO: Do something
     }
 
-    let mut df = datalog!(
+    let df = datalog!(
         r#"
         .async client_in `null::<(i64,)>()` `source_stream(client_recv) -> map(|x| deserialize(x.unwrap().1))`
         .async client_out `map(|(node_id, id)| (node_id, serialize(id))) -> dest_sink(client_send)` `null::<(u32, i64,)>()`
@@ -55,17 +54,5 @@ pub async fn run_server(cfg: ServerArgs) {
     "#
     );
 
-    df.run_async().await;
-
-    // let df = hydroflow_syntax! {
-    //     source_stream(client_recv) ->
-    //         map(|x| deserialize(x.unwrap())) ->
-    //         map(|x| {
-    //             println!("echo {:?}", x);
-    //             serialize(x)
-    //         }) ->
-    //         dest_sink(client_send);
-    // };
-
-    // hydroflow::util::cli::launch_flow(df).await;
+    launch_flow(df).await;
 }

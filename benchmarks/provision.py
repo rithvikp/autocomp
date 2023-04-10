@@ -375,8 +375,7 @@ class HydroState(State):
 
         # print("Endpoints:", endpoints, "\nExtra endpoints:", receive_endpoints)
         # endpoints['servers'][0] = host.PartialEndpoint(host=self._conn_cache.connect('10.138.0.32'), port=10001)
-        print("Endpoints:", endpoints, "\nExtra endpoints:", receive_endpoints)
-        input("Ready?")
+        # print("Endpoints:", endpoints, "\nExtra endpoints:", receive_endpoints)
 
         return endpoints, receive_endpoints
 

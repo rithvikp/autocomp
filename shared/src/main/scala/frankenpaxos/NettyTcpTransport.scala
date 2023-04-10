@@ -36,13 +36,11 @@ import java.util.concurrent.TimeUnit
 import scala.concurrent.ExecutionContext
 import scala.util.Try
 
-case class NettyTcpAddress(socketAddress: SocketAddress)
-    extends frankenpaxos.Address
+case class NettyTcpAddress(socketAddress: SocketAddress) extends frankenpaxos.Address
 
 object HostPortSerializer extends ProtoSerializer[HostPort]
 
-object NettyTcpAddressSerializer
-    extends frankenpaxos.Serializer[NettyTcpAddress] {
+object NettyTcpAddressSerializer extends frankenpaxos.Serializer[NettyTcpAddress] {
   // A cache of addresses, used to speed up fromByteString.
   private val fromByteStringCache = mutable.Map[ByteString, NettyTcpAddress]()
 
@@ -121,8 +119,7 @@ class NettyTcpTimer(
   }
 }
 
-class NettyTcpTransport(private val logger: Logger)
-    extends Transport[NettyTcpTransport] {
+class NettyTcpTransport(private val logger: Logger) extends Transport[NettyTcpTransport] {
 
   private class CommonHandler(protected val actor: Actor[NettyTcpTransport])
       extends ChannelInboundHandlerAdapter {
@@ -162,8 +159,7 @@ class NettyTcpTransport(private val logger: Logger)
     }
   }
 
-  private class ServerHandler(actor: Actor[NettyTcpTransport])
-      extends CommonHandler(actor) {
+  private class ServerHandler(actor: Actor[NettyTcpTransport]) extends CommonHandler(actor) {
     override def channelRegistered(ctx: ChannelHandlerContext): Unit = {
       val localAddress = NettyTcpAddress(ctx.channel.localAddress)
       val remoteAddress = NettyTcpAddress(ctx.channel.remoteAddress)
@@ -184,8 +180,10 @@ class NettyTcpTransport(private val logger: Logger)
       actor: Actor[NettyTcpTransport]
   ) extends CommonHandler(actor) {
     override def channelUnregistered(ctx: ChannelHandlerContext): Unit = {
-      if (ctx.channel.localAddress != null &&
-          ctx.channel.remoteAddress != null) {
+      if (
+        ctx.channel.localAddress != null &&
+        ctx.channel.remoteAddress != null
+      ) {
         val remoteAddress = NettyTcpAddress(ctx.channel.remoteAddress)
         unregisterChannel(actor.address, remoteAddress)
         ctx.fireChannelUnregistered()
@@ -198,8 +196,7 @@ class NettyTcpTransport(private val logger: Logger)
     }
   }
 
-  private class LogFailureFutureListener(message: String)
-      extends ChannelFutureListener {
+  private class LogFailureFutureListener(message: String) extends ChannelFutureListener {
     override def operationComplete(future: ChannelFuture): Unit = {
       if (future.isSuccess()) {
         return
@@ -341,6 +338,7 @@ class NettyTcpTransport(private val logger: Logger)
       .channel(classOf[NioServerSocketChannel])
       .option[Integer](ChannelOption.SO_BACKLOG, 128)
       .childOption[java.lang.Boolean](ChannelOption.SO_KEEPALIVE, true)
+      .childOption[java.lang.Boolean](ChannelOption.TCP_NODELAY, true)
       .childHandler(new ChannelInitializer[SocketChannel]() {
         @throws(classOf[Exception])
         override def initChannel(channel: SocketChannel): Unit = {
@@ -409,6 +407,7 @@ class NettyTcpTransport(private val logger: Logger)
           .group(eventLoop)
           .channel(classOf[NioSocketChannel])
           .option[java.lang.Boolean](ChannelOption.SO_KEEPALIVE, true)
+          .option[java.lang.Boolean](ChannelOption.TCP_NODELAY, true)
           .handler(new ChannelInitializer[SocketChannel]() {
             @throws(classOf[Exception])
             override def initChannel(channel: SocketChannel) {

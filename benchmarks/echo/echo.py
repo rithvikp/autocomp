@@ -244,7 +244,6 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         client_csvs = [
             bench.abspath(f'client_data.csv')
         ]
-        input("Done running, continue?")
 
         return benchmark.parse_recorder_data(
             bench,
