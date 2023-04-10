@@ -150,7 +150,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                 ]))
 
         bench.log("Reconfiguring the system for a new benchmark")
-        endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients"], "replicas": ["leaders"], "leaders": ["replicas"]})
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients"], "replicas": ["leaders"], "leaders": ["replicas"]})
         net.update(endpoints)
         bench.log("Reconfiguration completed")
 

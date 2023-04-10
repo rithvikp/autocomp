@@ -3,6 +3,7 @@ package frankenpaxos.echo
 import collection.mutable
 import com.github.tototoshi.csv.CSVWriter
 import frankenpaxos.Actor
+import frankenpaxos.Chan
 import frankenpaxos.BenchmarkUtil
 import frankenpaxos.PrometheusUtil
 import frankenpaxos.FileLogger
@@ -34,7 +35,8 @@ object BenchmarkClientMain extends App {
       numWarmupClients: Int = 1,
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009,
-      flushEveryN: Int = 1
+      flushEveryN: Int = 1,
+      receiveAddrs: String = ""
   )
 
   val parser = new scopt.OptionParser[Flags]("") {
@@ -53,6 +55,7 @@ object BenchmarkClientMain extends App {
     opt[String]("prometheus_host").action((x, f) => f.copy(prometheusHost = x))
     opt[Int]("prometheus_port").action((x, f) => f.copy(prometheusPort = x)).text("-1 to disable")
     opt[Int]("flush_every_n").action((x, f) => f.copy(flushEveryN = x))
+    opt[String]("receive_addrs").action((x, f) => f.copy(receiveAddrs = x))
   }
 
   val flags: Flags = parser.parse(args, Flags()) match {
@@ -74,6 +77,17 @@ object BenchmarkClientMain extends App {
     logger = logger,
     flushEveryN = flags.flushEveryN
   )
+
+  val receiveChans: Unit = for (addr <- flags.receiveAddrs.split(",")) {
+    if (addr != "") {
+      addr.split(":") match {
+        case Array(host, port) =>
+          client.send(NettyTcpAddress(new InetSocketAddress(host, port.toInt)), Array[Byte]())
+        case default => throw new IllegalArgumentException(s"Invalid receive address $addr")
+      }
+      System.out.println("Connected to " + addr)
+    }
+  }
 
   // Run clients.
   val recorder =
@@ -119,7 +133,7 @@ object BenchmarkClientMain extends App {
   // Warm up the protocol
   implicit val context = transport.executionContext
   val warmupFutures =
-    for (_ <- 0 to flags.numWarmupClients)
+    for (_ <- 0 until flags.numWarmupClients)
       yield BenchmarkUtil.runFor(() => warmupRun(), flags.warmupDuration)
   try {
     logger.info("Client warmup started.")
@@ -136,7 +150,7 @@ object BenchmarkClientMain extends App {
 
   // Run the benchmark.
   val futures =
-    for (_ <- 0 to flags.numClients)
+    for (_ <- 0 until flags.numClients)
       yield BenchmarkUtil.runFor(() => run(), flags.duration)
   try {
     logger.info("Clients started.")

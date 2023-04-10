@@ -9,6 +9,14 @@ class AckEverythingEchoSuite(EchoSuite):
     def args(self) -> Dict[Any, Any]:
         return vars(self._args)
 
+    def cluster_spec(self) -> Dict[str, Dict[str, int]]:
+        return {
+            '1': {
+                'servers': 1,
+                'clients': 1,
+            },
+        }
+
     def inputs(self) -> Collection[Input]:
         def gen_input(clients) -> Input:
             return Input(

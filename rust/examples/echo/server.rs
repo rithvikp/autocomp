@@ -1,4 +1,7 @@
-use hydroflow::util::cli::{ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource};
+use hydroflow::{
+    hydroflow_syntax,
+    util::cli::{ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource, ConnectedTagged},
+};
 use hydroflow_datalog::datalog;
 use prost::Message;
 use std::io::Cursor;
@@ -28,12 +31,12 @@ pub async fn run_server(cfg: ServerArgs) {
     let client_recv = ports
         .remove("receive_from$clients")
         .unwrap()
-        .connect::<ConnectedBidi>()
+        .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let client_send = ports
-        .remove("receive_from$clients")
+        .remove("send_to$clients")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await
@@ -45,16 +48,24 @@ pub async fn run_server(cfg: ServerArgs) {
 
     let mut df = datalog!(
         r#"
-        .async client_in `null::<(i64,)>()` `source_stream(client_recv) -> map(|x| deserialize(x.unwrap()))`
-
+        .async client_in `null::<(i64,)>()` `source_stream(client_recv) -> map(|x| deserialize(x.unwrap().1))`
         .async client_out `map(|(node_id, id)| (node_id, serialize(id))) -> dest_sink(client_send)` `null::<(u32, i64,)>()`
 
-        .output stdout `for_each(|tup| println!("echo {:?}", tup))`
-
-        stdout(x) :- client_in(x)
         client_out@0(x) :~ client_in(x)
     "#
     );
 
     df.run_async().await;
+
+    // let df = hydroflow_syntax! {
+    //     source_stream(client_recv) ->
+    //         map(|x| deserialize(x.unwrap())) ->
+    //         map(|x| {
+    //             println!("echo {:?}", x);
+    //             serialize(x)
+    //         }) ->
+    //         dest_sink(client_send);
+    // };
+
+    // hydroflow::util::cli::launch_flow(df).await;
 }

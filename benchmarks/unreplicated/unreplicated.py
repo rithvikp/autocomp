@@ -131,7 +131,7 @@ class UnreplicatedSuite(benchmark.Suite[Input, Output]):
         # FIXME: HF startup
 
         bench.log("Reconfiguring the system for a new benchmark")
-        endpoints = self.provisioner.rebuild(1, {"clients": ["server"], "server": ["clients"]})
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["server"], "server": ["clients"]})
         net.update(endpoints)
         bench.log("Reconfiguration completed")
 

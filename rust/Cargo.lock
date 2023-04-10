@@ -587,6 +587,7 @@ dependencies = [
  "pin-project",
  "serde",
  "serde_json",
+ "socket2",
  "tempfile",
  "tokio",
  "tokio-util",

@@ -24,9 +24,18 @@ class Endpoint(NamedTuple):
     host: Host
     port: int
 
+    def __str__(self) -> str:
+        return f"{self.host.ip()}:{self.port}"
+
 class PartialEndpoint(NamedTuple):
     host: Host
     port: Optional[int]
+
+    def __str__(self) -> str:
+        if self.port is None:
+            return f"{self.host.ip()}:<>"
+        else:
+            return f"{self.host.ip()}:{self.port}"
 
 class LocalHost(Host):
     def ip(self) -> str:

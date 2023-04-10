@@ -56,7 +56,7 @@ class State:
     def post_benchmark(self):
         pass
 
-    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Dict[str, List[host.PartialEndpoint]]:
+    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Tuple[Dict[str, List[host.PartialEndpoint]], List[host.Endpoint]]:
         raise NotImplementedError()
 
     def stop(self):
@@ -172,7 +172,7 @@ class HydroState(State):
 
 
     def reset_services(self):
-        self._service_exists = {}
+        self._custom_ports = {}
         self._services = {}
         for _, cluster in self._spec.items():
             for role, _ in cluster.items():
@@ -277,9 +277,17 @@ class HydroState(State):
         return proc.HydroflowProc(receiver)
 
     def post_benchmark(self):
+        async def stop(_):
+            for s in self._services.values():
+                for service in s:
+                    await service.stop()
+        
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        hydro.async_wrapper.run(stop, None)
+
         self.reset_services()
 
-    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Dict[str, List[host.PartialEndpoint]]:
+    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Tuple[Dict[str, List[host.PartialEndpoint]], List[host.Endpoint]]:
         # Create faux services for any scala services
         for role, spec in self._config["services"].items():
             if spec["type"] != "scala":
@@ -287,6 +295,7 @@ class HydroState(State):
             for machine in self._machines[str(f)][role]:
                 self._services[role].append(self._deployment.CustomService(machine, []))
 
+        # Sending and receiving is with respect to the custom service
         self._custom_ports: Dict[str, Dict[str, List[hydro.CustomServicePort]]] = {"send": {}, "receive": {}}
 
         for sender, conn_receivers in connections.items():
@@ -313,21 +322,27 @@ class HydroState(State):
                 if sender_hf:
                     for s in self._services[sender]:
                         sender_port = getattr(s.ports, f'send_to${receiver}')
-                        senders.append(sender)
+                        senders.append(sender_port)
                 else:
                     assert receiver not in self._custom_ports["send"], f"Hydroflow process {receiver} can only receive from one custom service"
                     self._custom_ports["send"][receiver] = []
 
                     for s in self._services[sender]:
                         sender_port = s.client_port()
+                        senders.append(sender_port)
                         self._custom_ports["send"][receiver].append(sender_port)
-                        senders.append(sender)
 
-                hydro.mux({
-                    i: s for i, s in enumerate(senders)
-                }).send_to(hydro.demux({
+                demux = hydro.demux({
                     i: r for i, r in enumerate(receivers)
-                }))
+                })
+                for i, s in enumerate(senders):
+                    s.tagged(i).send_to(demux)
+                # hydro.mux({
+                    # i: s for i, s in enumerate(senders)
+                # }).send_to(hydro.demux({
+                # senders[0].send_to(hydro.demux({
+                    # i: r for i, r in enumerate(receivers)
+                # }))
         
         asyncio.set_event_loop(asyncio.new_event_loop())
         hydro.async_wrapper.run(self._redeploy_and_start, None)
@@ -353,13 +368,23 @@ class HydroState(State):
             else:
                 raise ValueError(f"Unrecognized service type for role {role}: {spec['type']}")
 
-        return endpoints
+        receive_endpoints = []
+        for e in self._hydroflow_receive_endpoints.values():
+            receive_endpoints.extend(e)
+
+
+        # print("Endpoints:", endpoints, "\nExtra endpoints:", receive_endpoints)
+        # endpoints['servers'][0] = host.PartialEndpoint(host=self._conn_cache.connect('10.138.0.32'), port=10001)
+        print("Endpoints:", endpoints, "\nExtra endpoints:", receive_endpoints)
+        input("Ready?")
+
+        return endpoints, receive_endpoints
 
     async def _redeploy_and_start(self, _):
         await self._deployment.deploy()
         await self._deployment.start()
         self._hydroflow_endpoints: Dict[str, List[host.PartialEndpoint]] = {}
-        self._hydroflow_sender_endpoints: Dict[str, List[host.Endpoint]] = {}
+        self._hydroflow_receive_endpoints: Dict[str, List[host.Endpoint]] = {}
 
         for receiver, ports in self._custom_ports["send"].items():
             # Sender is always a custom service and receiver is always a hydroflow service
@@ -381,26 +406,51 @@ class HydroState(State):
                         host.FakeHost(decomposed_addr[1]),
                         int(decomposed_addr[2]),
                     )
+                # addr = (await port.server_port()).json()
+                # assert  receiver not in self._hydroflow_receive_endpoints, (f"Multiple scala processes cannot "+
+                #     f"currently communicate with the same hydroflow process: {sender}")
+                # addr = addr["TcpPort"]
+                # decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
+                # assert decomposed_addr is not None, f"Could not parse address {addr}"
+
+                # self._hydroflow_endpoints[receiver] = [host.Endpoint(
+                #     host.FakeHost(decomposed_addr[1]),
+                #     int(decomposed_addr[2]),
+                # )]
+
         for sender, ports in self._custom_ports["receive"].items():
             # Sender is always a hydroflow service and receiver is always a custom service
             assert len(ports) == 1, "A scala process can currently only talk to a single hydroflow process"
             for port in ports:
-                addrs = (await port.server_port()).json()['Mux']
-                assert len(addrs) == len(self._services[sender]), (f"The number of "+
-                    f"addresses does not match the number of nodes with the role {sender}.")
-                assert sender not in self._hydroflow_sender_endpoints, (f"Multiple scala processes cannot "+
-                    f"currently communicate with the same hydroflow process: {sender}")
+                # FIXME[Hydro CLI]: Mux sending to clients
+                print((await port.server_port()).json())
+                # addrs = (await port.server_port()).json()['Tagged'] 
+                # assert len(addrs) == len(self._services[sender]), (f"The number of "+
+                #     f"addresses does not match the number of nodes with the role {sender}.")
+                # assert sender not in self._hydroflow_receive_endpoints, (f"Multiple scala processes cannot "+
+                #     f"currently communicate with the same hydroflow process: {sender}")
 
-                self._hydroflow_sender_endpoints[sender] = [None]*len(addrs)
-                for index, addr in addrs.items():
-                    addr = addr["TcpPort"]
-                    decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
-                    assert decomposed_addr is not None, f"Could not parse address {addr}"
+                # self._hydroflow_receive_endpoints[sender] = [None]*len(addrs)
+                # for index, addr in addrs.items():
+                #     addr = addr["TcpPort"]
+                #     decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
+                #     assert decomposed_addr is not None, f"Could not parse address {addr}"
                     
-                    self._hydroflow_sender_endpoints[sender][index] = host.Endpoint(
-                        host.FakeHost(decomposed_addr[1]),
-                        int(decomposed_addr[2]),
-                    )
+                #     self._hydroflow_receive_endpoints[sender][index] = host.Endpoint(
+                #         host.FakeHost(decomposed_addr[1]),
+                #         int(decomposed_addr[2]),
+                #     )
+                addr = (await port.server_port()).json()['Tagged'][0]
+                assert sender not in self._hydroflow_receive_endpoints, (f"Multiple scala processes cannot "+
+                    f"currently communicate with the same hydroflow process: {sender}")
+                addr = addr["TcpPort"]
+                decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
+                assert decomposed_addr is not None, f"Could not parse address {addr}"
+
+                self._hydroflow_receive_endpoints[sender] = [host.Endpoint(
+                    host.FakeHost(decomposed_addr[1]),
+                    int(decomposed_addr[2]),
+                )]
 
     
     def stop(self):

@@ -91,14 +91,6 @@ class EchoNet:
 
 # Suite ########################################################################
 class EchoSuite(benchmark.Suite[Input, Output]):
-    def cluster_spec(self) -> Dict[str, Dict[str, int]]:
-        return {
-            '1': {
-                'servers': 1,
-                'clients': 1,
-            },
-        }
-
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], inp: Input) -> Output:
         net = EchoNet(inp, self.provisioner.hosts(1))
@@ -115,7 +107,7 @@ class EchoSuite(benchmark.Suite[Input, Output]):
             (['--persist-log'] if inp.persist_log else []))
 
         bench.log("Reconfiguring the system for a new benchmark")
-        endpoints = self.provisioner.rebuild(1, {"clients": ["servers"], "servers": ["clients"]})
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["servers"], "servers": ["clients"]})
         net.update(endpoints)
         bench.log("Reconfiguration completed")
 
@@ -232,6 +224,8 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 net.prom_placement().client.host.ip(),
                 '--prometheus_port',
                 str(net.prom_placement().client.port),
+                '--receive_addrs',
+                ','.join([str(x) for x in receive_endpoints]),
             ])
         if inp.profiled:
             client_proc = perf_util.JavaPerfProc(
@@ -250,6 +244,7 @@ class EchoSuite(benchmark.Suite[Input, Output]):
         client_csvs = [
             bench.abspath(f'client_data.csv')
         ]
+        input("Done running, continue?")
 
         return benchmark.parse_recorder_data(
             bench,
