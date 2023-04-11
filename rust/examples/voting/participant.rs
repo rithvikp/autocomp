@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use hydroflow::util::{
     cli::{
-        launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource, ConnectedTagged,
+        launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
+        ConnectedTagged, ServerOrBound,
     },
     deserialize_from_bytes, serialize_to_bytes,
 };
@@ -12,9 +15,7 @@ pub struct ParticipantArgs {
     index: Option<u32>,
 }
 
-pub async fn run(cfg: ParticipantArgs) {
-    let mut ports = hydroflow::util::cli::init().await;
-
+pub async fn run(cfg: ParticipantArgs, mut ports: HashMap<String, ServerOrBound>) {
     let to_replica_source = ports
         .remove("receive_from$leaders$0")
         .unwrap()

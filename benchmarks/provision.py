@@ -326,7 +326,6 @@ class HydroState(State):
 
                 sender_hf = self._config["services"][sender]["type"] == "hydroflow"
                 receiver_hf = self._config["services"][receiver]["type"] == "hydroflow"
-                print(sender, receiver, sender_hf, receiver_hf)
                 if not sender_hf and not receiver_hf:
                     continue
 
@@ -346,9 +345,7 @@ class HydroState(State):
                 # Generate a list of sender ports, one for each service in the given role.
                 senders = []
                 if sender_hf:
-                    print("in sender-hf sendr", sender)
                     for s in self._services[sender]:
-                        print(f'send_to${receiver}${index}')
                         sender_port = getattr(s.ports, f'send_to${receiver}${index}')
                         senders.append(sender_port)
                 else:
@@ -383,9 +380,10 @@ class HydroState(State):
                     ))
             elif spec["type"] == "hydroflow":
                 if role not in self._hydroflow_endpoints:
-                    for _ in range(len(self._services[role])):
+                    for i in range(len(self._services[role])):
+                        machine = self._machines[str(f)][role][i]
                         endpoints[role].append(host.PartialEndpoint(
-                            host=host.FakeHost("<handled by Hydro CLI>"),
+                            host=host.FakeHost(self._internal_ip(machine)),
                             port=None,
                         ))
                     continue

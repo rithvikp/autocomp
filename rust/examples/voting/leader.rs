@@ -1,22 +1,24 @@
 use frankenpaxos::voting_proto;
 use hydroflow::util::{
     cli::{
-        launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource, ConnectedTagged,
+        launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
+        ConnectedTagged, ServerOrBound,
     },
     deserialize_from_bytes, serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
-use std::io::Cursor;
+use std::{collections::HashMap, io::Cursor};
 
 #[derive(clap::Args, Debug)]
 pub struct LeaderArgs {}
 
-fn deserialize(msg: impl AsRef<[u8]>) -> (i64,) {
+fn deserialize(msg: impl AsRef<[u8]>, vote_requests: &prometheus::Counter) -> (i64,) {
     let s = voting_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
 
     match s.request.unwrap() {
         voting_proto::leader_inbound::Request::ClientRequest(r) => {
+            vote_requests.inc();
             return (r.id,);
         }
         _ => panic!("Unexpected message from the client"),
@@ -33,8 +35,8 @@ fn serialize(v: (i64,)) -> bytes::Bytes {
     return bytes::Bytes::from(buf);
 }
 
-pub async fn run(_cfg: LeaderArgs) {
-    let mut ports = hydroflow::util::cli::init().await;
+pub async fn run(_cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
+    let vote_requests = prometheus::register_counter!("voting_requests_total", "help").unwrap();
 
     // Client setup
     let client_recv = ports
@@ -70,7 +72,7 @@ pub async fn run(_cfg: LeaderArgs) {
 
     let df = datalog!(
         r#"
-.async clientIn `null::<(i64,)>()` `source_stream(client_recv) -> map(|x| deserialize(x.unwrap().1))`
+.async clientIn `null::<(i64,)>()` `source_stream(client_recv) -> map(|x| deserialize(x.unwrap().1, &vote_requests))`
 .async clientOut `map(|(node_id, id)| (node_id, serialize(id))) -> dest_sink(client_send)` `null::<(u32, i64,)>()`
 
 .output stdout `for_each(|s:(i64,)| println!("committed: {:?}", s))`

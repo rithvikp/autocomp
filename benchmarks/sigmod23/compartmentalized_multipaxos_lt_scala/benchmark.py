@@ -237,7 +237,7 @@ def main(args) -> None:
 
     suite = Suite()
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'scala_compartmentalized_lt') as dir:
+                                  'compartmentalized_lt_scala') as dir:
         suite.run_suite(dir)
 
 

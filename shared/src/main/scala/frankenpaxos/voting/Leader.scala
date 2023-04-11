@@ -67,10 +67,9 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
         }
 
         if (reply.accepted) {
-          votes.put(RequestId(reply.id, reply.clientAddress),
-                    votes(RequestId(reply.id, reply.clientAddress)) + 1
-          )
+          votes.put(requestId, votes(RequestId(reply.id, reply.clientAddress)) + 1)
           if (votes(requestId) == replicas.size) {
+            votes.remove(requestId)
             clients(reply.clientAddress).send(
               ClientReply(id = reply.id, accepted = true)
             )
