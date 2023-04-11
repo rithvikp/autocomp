@@ -25,6 +25,7 @@ import time
 import tqdm
 import yaml
 
+# hpython -m benchmarks.voting.smoke -j /mnt/nfs/tmp/frankenpaxos-assembly-0.1.0-SNAPSHOT.jar -m -s /mnt/nfs/tmp/ -l info --cluster_config ../clusters/voting/scala_hydro_config.json
 
 # Input/Output #################################################################
 class Input(NamedTuple):
@@ -33,6 +34,7 @@ class Input(NamedTuple):
     num_replicas: int
     jvm_heap_size: str
     log_level: str
+    optimized: bool
 
     # Benchmark parameters. ####################################################
     duration: datetime.timedelta
@@ -112,45 +114,39 @@ class VotingNet:
 
 # Suite ########################################################################
 class VotingSuite(benchmark.Suite[Input, Output]):
-    def cluster_spec(self) -> Dict[str, Dict[str, int]]:
-        return {
-            '1': {
-                'leaders': 1,
-                'replicas': 5, # Max across any benchmark
-                'clients': 1,
-            },
-        }
-
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], inp: Input) -> Output:
         net = VotingNet(inp, self.provisioner.hosts(1))
 
-        if self.service_type("leaders") == "hydroflow":
-            leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
-                '--prometheus_host',
-                net.prom_placement().leader.host.ip(),
-                '--prometheus_port',
-                str(net.prom_placement().leader.port),
-                '--log_level',
-                inp.log_level,
-            ])
-        
-        if self.service_type("replicas") == "hydroflow":
-            replica_procs: List[proc.Proc] = []
-            for (i, replica) in enumerate(net.placement().replicas):
-                replica_procs.append(self.provisioner.popen_hydroflow(bench, 'replicas', 1,[
-                    '--index',
-                    str(i),
-                    '--prometheus_host',
-                    replica.host.ip(),
-                    '--prometheus_port',
-                    str(replica.port),
-                    '--log_level',
-                    inp.log_level,
-                ]))
+        if not inp.optimized:
+            if self.service_type("leaders") == "hydroflow":
+                leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
+                    '--service',
+                    'leader',
+                    '--prometheus-host',
+                    net.prom_placement().leader.host.ip(),
+                    '--prometheus-port',
+                    str(net.prom_placement().leader.port),
+                ])
+            
+            if self.service_type("replicas") == "hydroflow":
+                replica_procs: List[proc.Proc] = []
+                for (i, replica) in enumerate(net.prom_placement().replicas):
+                    replica_procs.append(self.provisioner.popen_hydroflow(bench, f'replicas_{i}', 1,[
+                        '--service',
+                        'participant',
+                        '--index',
+                        str(i),
+                        '--prometheus-host',
+                        replica.host.ip(),
+                        '--prometheus-port',
+                        str(replica.port),
+                    ]))
+        else:
+            assert False
 
         bench.log("Reconfiguring the system for a new benchmark")
-        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients"], "replicas": ["leaders"], "leaders": ["replicas"]})
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients", "replicas"], "replicas": ["leaders"]})
         net.update(endpoints)
         bench.log("Reconfiguration completed")
 
@@ -176,6 +172,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
 
         # Launch leader.   
         if self.service_type("leaders") == "scala":
+            assert not inp.optimized
             leader_proc = bench.popen(
                 host=net.placement().leader.host,
                 label=f'leaders',
@@ -300,6 +297,8 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                 str(net.prom_placement().client.port),
                 '--log_level',
                 inp.log_level,
+                '--receive_addrs',
+                ','.join([str(x) for x in receive_endpoints]),
             ])
         if inp.profiled:
             client_proc = perf_util.JavaPerfProc(

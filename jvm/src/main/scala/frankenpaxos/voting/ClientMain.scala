@@ -4,6 +4,7 @@ import collection.mutable
 import com.github.tototoshi.csv.CSVWriter
 import frankenpaxos.Actor
 import frankenpaxos.BenchmarkUtil
+import frankenpaxos.PrometheusUtil
 import frankenpaxos.FileLogger
 import frankenpaxos.Flags.durationRead
 import frankenpaxos.NettyTcpAddress
@@ -35,7 +36,8 @@ object ClientMain extends App {
       numWarmupClients: Int = 1,
       // Monitoring.
       prometheusHost: String = "0.0.0.0",
-      prometheusPort: Int = 8009
+      prometheusPort: Int = 8009,
+      receiveAddrs: String = ""
   )
 
   val parser = new scopt.OptionParser[Flags]("") {
@@ -56,6 +58,7 @@ object ClientMain extends App {
     opt[Int]("prometheus_port")
       .action((x, f) => f.copy(prometheusPort = x))
       .text("-1 to disable")
+    opt[String]("receive_addrs").action((x, f) => f.copy(receiveAddrs = x))
   }
 
   val flags: Flags = parser.parse(args, Flags()) match {
@@ -75,6 +78,16 @@ object ClientMain extends App {
     transport = transport,
     logger = logger
   )
+
+  val receiveChans: Unit = for (addr <- flags.receiveAddrs.split(",")) {
+    if (addr != "") {
+      addr.split(":") match {
+        case Array(host, port) =>
+          client.send(NettyTcpAddress(new InetSocketAddress(host, port.toInt)), Array[Byte]())
+        case default => throw new IllegalArgumentException(s"Invalid receive address $addr")
+      }
+    }
+  }
 
   // Run clients.
   val recorder =
@@ -115,6 +128,8 @@ object ClientMain extends App {
       })
   }
 
+  val prometheusServer = PrometheusUtil.server(flags.prometheusHost, flags.prometheusPort)
+
   // Warm up the protocol
   implicit val context = transport.executionContext
   val warmupFutures =
@@ -151,4 +166,10 @@ object ClientMain extends App {
   logger.info("Shutting down transport.")
   transport.shutdown()
   logger.info("Transport shut down.")
+
+  prometheusServer.foreach(server => {
+    logger.info("Stopping prometheus.")
+    server.stop()
+    logger.info("Prometheus stopped.")
+  })
 }

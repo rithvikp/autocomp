@@ -28,14 +28,14 @@ fn serialize(v: (i64,)) -> bytes::Bytes {
 pub async fn run_server(cfg: ServerArgs) {
     let mut ports = hydroflow::util::cli::init().await;
     let client_recv = ports
-        .remove("receive_from$clients")
+        .remove("receive_from$clients$0")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let client_send = ports
-        .remove("send_to$clients")
+        .remove("send_to$clients$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await

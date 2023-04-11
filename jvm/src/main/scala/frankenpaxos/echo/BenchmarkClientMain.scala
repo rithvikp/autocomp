@@ -85,7 +85,6 @@ object BenchmarkClientMain extends App {
           client.send(NettyTcpAddress(new InetSocketAddress(host, port.toInt)), Array[Byte]())
         case default => throw new IllegalArgumentException(s"Invalid receive address $addr")
       }
-      System.out.println("Connected to " + addr)
     }
   }
 

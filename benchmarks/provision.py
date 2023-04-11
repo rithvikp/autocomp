@@ -180,6 +180,8 @@ class HydroState(State):
                 self._services[role] = []
 
     async def _configure(self, _):
+        """Perform initial configuration for an experiment, only deploying machines.
+        """
         self._deployment = hydro.Deployment()
         deployment = self._deployment
         config = self._config
@@ -245,10 +247,11 @@ class HydroState(State):
             assert decomposed_label is not None, "The provided label was invalid. Check the comment in provision.py"
             index = 0
         else:
-            index = int(decomposed_label[2]) - 1
+            index = int(decomposed_label[2])
         role = decomposed_label[1]
 
-        assert index not in self._service_exists[role], "The same label was provisioned twice."
+        assert index not in self._service_exists[role], ("The same label was provisioned twice. Are your labels of "+
+            "the form f'{role}_{index}'?")
         self._service_exists[role].add(index)
 
         return role, index
@@ -277,6 +280,10 @@ class HydroState(State):
         return proc.HydroflowProc(receiver)
 
     def post_benchmark(self):
+        """Stop all services and reset the state of the provisioner.
+
+        This method should be called after every benchmark.
+        """
         async def stop(_):
             for s in self._services.values():
                 for service in s:
@@ -288,6 +295,15 @@ class HydroState(State):
         self.reset_services()
 
     def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Tuple[Dict[str, List[host.PartialEndpoint]], List[host.Endpoint]]:
+        """Given the specified connections, pass them to hydro CLI and deploy all services.
+
+        Returns a mapping between every role and a list of endpoints (for Scala clients to communicate
+        with) as well as a separate list of endpoints (back channels) with which Scala clients should
+        open connections (but not send data).
+
+        Connections should be in the form {sender: [receiver1, receiver2, ...], ...}. Note that the same receiver
+        can be specified multiple times, meaning multiple channels will be opened.
+        """
         # Create faux services for any scala services
         for role, spec in self._config["services"].items():
             if spec["type"] != "scala":
@@ -298,17 +314,25 @@ class HydroState(State):
         # Sending and receiving is with respect to the custom service
         self._custom_ports: Dict[str, Dict[str, List[hydro.CustomServicePort]]] = {"send": {}, "receive": {}}
 
+        # For every connection pair, generate the correct set of ports and link them together
         for sender, conn_receivers in connections.items():
+            assert sender in self._services, f"Sender {sender} is not a valid role"
+            seen_receivers: Dict[str, int] = {}
             for receiver in conn_receivers:
-                assert sender in self._services, f"Sender {sender} is not a valid role"
+                assert receiver in self._services, f"Receiver {receiver} is not a valid role"
+
+                index = seen_receivers.get(receiver, 0)
+                seen_receivers[receiver] = index + 1
 
                 sender_hf = self._config["services"][sender]["type"] == "hydroflow"
                 receiver_hf = self._config["services"][receiver]["type"] == "hydroflow"
+                print(sender, receiver, sender_hf, receiver_hf)
                 if not sender_hf and not receiver_hf:
                     continue
 
+                # Generate a list of receiver ports, one for each service in the given role.
                 if receiver_hf:
-                    receivers = [getattr(n.ports, f'receive_from${sender}').merge() for n in self._services[receiver]]
+                    receivers = [getattr(n.ports, f'receive_from${sender}${index}').merge() for n in self._services[receiver]]
                 else:
                     assert sender not in self._custom_ports["receive"], f"Hyrdoflow process {sender} can only send to one custom service"
                     self._custom_ports["receive"][sender] = []
@@ -316,12 +340,16 @@ class HydroState(State):
                     for s in self._services[receiver]:
                         receiver_port = s.client_port()
                         receivers.append(receiver_port)
+                        # Custom ports need to be tracked separately so the final port allocations can be discovered.
                         self._custom_ports["receive"][sender].append(receiver_port)
 
+                # Generate a list of sender ports, one for each service in the given role.
                 senders = []
                 if sender_hf:
+                    print("in sender-hf sendr", sender)
                     for s in self._services[sender]:
-                        sender_port = getattr(s.ports, f'send_to${receiver}')
+                        print(f'send_to${receiver}${index}')
+                        sender_port = getattr(s.ports, f'send_to${receiver}${index}')
                         senders.append(sender_port)
                 else:
                     assert receiver not in self._custom_ports["send"], f"Hydroflow process {receiver} can only receive from one custom service"
@@ -332,21 +360,18 @@ class HydroState(State):
                         senders.append(sender_port)
                         self._custom_ports["send"][receiver].append(sender_port)
 
+                # Connect the senders to the receivers
                 demux = hydro.demux({
                     i: r for i, r in enumerate(receivers)
                 })
                 for i, s in enumerate(senders):
                     s.tagged(i).send_to(demux)
-                # hydro.mux({
-                    # i: s for i, s in enumerate(senders)
-                # }).send_to(hydro.demux({
-                # senders[0].send_to(hydro.demux({
-                    # i: r for i, r in enumerate(receivers)
-                # }))
         
         asyncio.set_event_loop(asyncio.new_event_loop())
         hydro.async_wrapper.run(self._redeploy_and_start, None)
 
+        # All services have been deployed so collect the endpoints that need to be returned.
+        # The instance variables were populated by self._redeploy_and_start()
         endpoints: Dict[str, List[host.PartialEndpoint]] = {}
         for role, spec in self._config["services"].items():
             endpoints[role] = []
@@ -380,11 +405,14 @@ class HydroState(State):
         return endpoints, receive_endpoints
 
     async def _redeploy_and_start(self, _):
+        """Redeploy and start the services and collect any connection endpoints for custom ports.
+        """
         await self._deployment.deploy()
         await self._deployment.start()
         self._hydroflow_endpoints: Dict[str, List[host.PartialEndpoint]] = {}
         self._hydroflow_receive_endpoints: Dict[str, List[host.Endpoint]] = {}
 
+        # Gather all the endpoints for scala --> hydroflow connections
         for receiver, ports in self._custom_ports["send"].items():
             # Sender is always a custom service and receiver is always a hydroflow service
             assert len(ports) == 1, "A scala process can currently only talk to a single hydroflow process"
@@ -417,6 +445,8 @@ class HydroState(State):
                 #     int(decomposed_addr[2]),
                 # )]
 
+        # Gather all the endpoints for hydroflow --> scala connections
+        # These are back channels on which Scala will not send messages (but hydroflow will)
         for sender, ports in self._custom_ports["receive"].items():
             # Sender is always a hydroflow service and receiver is always a custom service
             assert len(ports) == 1, "A scala process can currently only talk to a single hydroflow process"

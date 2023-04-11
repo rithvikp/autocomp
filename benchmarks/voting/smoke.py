@@ -8,14 +8,24 @@ class SmokeVotingSuite(VotingSuite):
     def args(self) -> Dict[Any, Any]:
         return vars(self._args)
 
+    def cluster_spec(self) -> Dict[str, Dict[str, int]]:
+        return {
+            '1': {
+                'leaders': 1,
+                'replicas': 5, # Max across any benchmark
+                'clients': 1,
+            },
+        }
+
     def inputs(self) -> Collection[Input]:
         def gen_input(clients: int, replicas: int) -> Input:
             return Input(
                 num_clients_per_proc=clients,
                 num_replicas=replicas,
                 jvm_heap_size='100m',
+                optimized=False,
                 duration=datetime.timedelta(seconds=10),
-                timeout=datetime.timedelta(seconds=3),
+                timeout=datetime.timedelta(seconds=20),
                 warmup_duration=datetime.timedelta(seconds=3),
                 warmup_timeout=datetime.timedelta(seconds=3),
                 warmup_sleep=datetime.timedelta(seconds=1),
@@ -29,7 +39,8 @@ class SmokeVotingSuite(VotingSuite):
             )
 
         return [
-            gen_input(10, 5),
+            # gen_input(10, 5),
+            gen_input(100, 5),
         ]
 
         # return [
