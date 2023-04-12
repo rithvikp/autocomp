@@ -31,6 +31,7 @@ class SmokeVotingSuite(VotingSuite):
                 # Need a large lag in order for Prometheus to initialize correctly
                 client_lag=datetime.timedelta(seconds=10),
                 log_level=self.args()['log_level'],
+                leader_flush_every_n=1,
                 profiled=self._args.profile,
                 monitored=self._args.monitor,
                 prometheus_scrape_interval=datetime.timedelta(

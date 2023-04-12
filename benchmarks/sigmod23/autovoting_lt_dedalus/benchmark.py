@@ -21,7 +21,7 @@ def main(args) -> None:
             }
 
         def inputs(self) -> Collection[Input]:
-            def gen_input(clients: int, replica_groups: int, replica_partitions: int, collectors: int, broadcasters: int) -> Input:
+            def gen_input(clients: int, replica_groups: int, replica_partitions: int, collectors: int, broadcasters: int, leader_flush_every_n: int) -> Input:
                 return Input(
                     num_clients_per_proc=clients,
                     num_replica_groups=replica_groups,
@@ -37,6 +37,7 @@ def main(args) -> None:
                     # Need a large lag in order for Prometheus to initialize correctly
                     client_lag=datetime.timedelta(seconds=10),
                     log_level=self.args()['log_level'],
+                    leader_flush_every_n=leader_flush_every_n,
                     profiled=self._args.profile,
                     monitored=self._args.monitor,
                     prometheus_scrape_interval=datetime.timedelta(
@@ -45,13 +46,14 @@ def main(args) -> None:
 
 
             return [
-                gen_input(client_procs, replica_groups, replica_partitions, collectors, broadcasters)
+                gen_input(client_procs, replica_groups, replica_partitions, collectors, broadcasters, leader_flush_every_n)
 
-                for client_procs in [10, 25, 40, 50, 60, 75, 100, 125, 150, 175, 200, 275, 400]
+                for client_procs in [10, 25, 50, 75, 125, 175, 250, 400]
                 for replica_groups in [7]
                 for replica_partitions in [1,3]
-                for collectors in [1]
-                for broadcasters in [1]
+                for collectors in [1,3]
+                for broadcasters in [1,3]
+                for leader_flush_every_n in [15]
             ]#*3
 
         def summary(self, input: Input, output: Output) -> str:
@@ -61,6 +63,7 @@ def main(args) -> None:
                 'num_replica_partitions': input.num_replica_partitions,
                 'num_broadcasters': input.num_broadcasters,
                 'num_collectors': input.num_collectors,
+                'leader_flush_every_n': input.leader_flush_every_n,
                 'latency.median_ms': output.latency.median_ms,
                 'start_throughput_1s.p90': output.start_throughput_1s.p90,
             })

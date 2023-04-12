@@ -1,5 +1,6 @@
 use frankenpaxos::voting_proto;
 use hydroflow::util::{
+    batched_sink,
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
         ConnectedTagged, ServerOrBound,
@@ -8,10 +9,13 @@ use hydroflow::util::{
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
-use std::{collections::HashMap, convert::TryFrom, io::Cursor};
+use std::{collections::HashMap, convert::TryFrom, io::Cursor, time::Duration};
 
 #[derive(clap::Args, Debug)]
-pub struct LeaderArgs {}
+pub struct LeaderArgs {
+    #[clap(long, default_value = "1")]
+    flush_every_n: usize,
+}
 
 fn deserialize(msg: impl AsRef<[u8]>, vote_requests: &prometheus::Counter) -> (i64,) {
     let s = voting_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
@@ -25,7 +29,7 @@ fn deserialize(msg: impl AsRef<[u8]>, vote_requests: &prometheus::Counter) -> (i
     }
 }
 
-pub async fn run(_cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
+pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let vote_requests = prometheus::register_counter!("voting_requests_total", "help").unwrap();
 
     // Client setup
@@ -44,7 +48,12 @@ pub async fn run(_cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await;
 
     let broadcasters = to_broadcaster_port.keys.clone();
-    let to_broadcaster_sink = to_broadcaster_port.into_sink();
+    let to_broadcaster_unbatched_sink = to_broadcaster_port.into_sink();
+    let to_broadcaster_sink = batched_sink(
+        to_broadcaster_unbatched_sink,
+        cfg.flush_every_n,
+        Duration::from_secs(10),
+    );
 
     let num_broadcaster_partitions: Vec<i64> = vec![i64::try_from(broadcasters.len()).unwrap()];
 

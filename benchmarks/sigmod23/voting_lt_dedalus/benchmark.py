@@ -13,13 +13,13 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'replicas': 10, # Max across any benchmark
+                    'replicas': 7, # Max across any benchmark
                     'clients': 1,
                 },
             }
 
         def inputs(self) -> Collection[Input]:
-            def gen_input(clients: int, replicas: int) -> Input:
+            def gen_input(clients: int, replicas: int, leader_flush_every_n: int) -> Input:
                 return Input(
                     num_clients_per_proc=clients,
                     num_replicas=replicas,
@@ -32,6 +32,7 @@ def main(args) -> None:
                     # Need a large lag in order for Prometheus to initialize correctly
                     client_lag=datetime.timedelta(seconds=10),
                     log_level=self.args()['log_level'],
+                    leader_flush_every_n=leader_flush_every_n,
                     profiled=self._args.profile,
                     monitored=self._args.monitor,
                     prometheus_scrape_interval=datetime.timedelta(
@@ -40,19 +41,21 @@ def main(args) -> None:
 
 
             return [
-                gen_input(client_procs, num_replicas)
+                gen_input(client_procs, num_replicas, leader_flush_every_n)
 
                 # for client_procs in [1, 10, 25, 40, 50, 60, 75, 100, 125, 150, 175]
                 # for num_replicas in [3, 5]
 
-                for client_procs in [10, 25, 40, 50, 60, 75, 100, 125, 150, 175, 200, 275, 400]
-                for num_replicas in [7]
+                for client_procs in [10, 25, 40, 50, 60, 75, 100, 125, 150, 175, 200, 250, 300, 400, 500]
+                for num_replicas in [3,7]
+                for leader_flush_every_n in [15,1]
             ]#*3
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
                 'num_clients_per_proc': input.num_clients_per_proc,
                 'num_replicas': input.num_replicas,
+                'leader_flush_every_n': input.leader_flush_every_n,
                 'latency.median_ms': output.latency.median_ms,
                 'start_throughput_1s.p90': output.start_throughput_1s.p90,
             })

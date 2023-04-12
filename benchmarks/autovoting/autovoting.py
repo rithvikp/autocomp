@@ -45,6 +45,7 @@ class Input(NamedTuple):
     warmup_timeout: datetime.timedelta
     warmup_sleep: datetime.timedelta
     client_lag: datetime.timedelta
+    leader_flush_every_n: int
     profiled: bool
     monitored: bool
     prometheus_scrape_interval: datetime.timedelta
@@ -134,6 +135,8 @@ class AutoVotingSuite(benchmark.Suite[Input, Output]):
                 net.prom_placement().leader.host.ip(),
                 '--prometheus-port',
                 str(net.prom_placement().leader.port),
+                '--flush-every-n',
+                str(inp.leader_flush_every_n),
             ])
         else:
             raise ValueError("AutoVoting only currently supports hydroflow leaders")
