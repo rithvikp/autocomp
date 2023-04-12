@@ -23,7 +23,6 @@ class SmokeVotingSuite(VotingSuite):
                 num_clients_per_proc=clients,
                 num_replicas=replicas,
                 jvm_heap_size='100m',
-                optimized=False,
                 duration=datetime.timedelta(seconds=60),
                 timeout=datetime.timedelta(seconds=120),
                 warmup_duration=datetime.timedelta(seconds=10),

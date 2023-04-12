@@ -31,7 +31,10 @@ import yaml
 class Input(NamedTuple):
     # System-wide parameters. ##################################################
     num_clients_per_proc: int
-    num_replicas: int
+    num_replica_groups: int
+    num_replica_partitions: int
+    num_collectors: int
+    num_broadcasters: int
     jvm_heap_size: str
     log_level: str
 
@@ -51,7 +54,7 @@ Output = benchmark.RecorderOutput
 
 
 # Networks #####################################################################
-class VotingNet:
+class AutoVotingNet:
     def __init__(self, inp: Input, endpoints: Dict[str, List[host.PartialEndpoint]]):
         self._input = inp
         self._endpoints = endpoints
@@ -62,6 +65,8 @@ class VotingNet:
     class Placement(NamedTuple):
         client: host.Endpoint
         leader: host.Endpoint
+        collectors: List[host.Endpoint]
+        broadcasters: List[host.Endpoint]
         replicas: List[host.Endpoint]
 
     def prom_placement(self) -> Placement:
@@ -77,7 +82,9 @@ class VotingNet:
         return self.Placement(
             client=portify_one(self._endpoints['clients'][0]),
             leader=portify_one(self._endpoints['leaders'][0]),
-            replicas=portify('replicas', self._input.num_replicas),
+            collectors=portify('collectors', self._input.num_collectors),
+            broadcasters=portify('broadcasters', self._input.num_broadcasters),
+            replicas=portify('replicas', self._input.num_replica_groups * self._input.num_replica_partitions),
         )
 
     def placement(self) -> Placement:
@@ -95,7 +102,9 @@ class VotingNet:
         return self.Placement(
             client=portify_one(self._endpoints['clients'][0]),
             leader=portify_one(self._endpoints['leaders'][0]),
-            replicas=portify('replicas', self._input.num_replicas),
+            collectors=portify('collectors', self._input.num_collectors),
+            broadcasters=portify('broadcasters', self._input.num_broadcasters),
+            replicas=portify('replicas', self._input.num_replica_groups * self._input.num_replica_partitions),
         )
 
     def config(self) -> proto_util.Message:
@@ -112,10 +121,10 @@ class VotingNet:
 
 
 # Suite ########################################################################
-class VotingSuite(benchmark.Suite[Input, Output]):
+class AutoVotingSuite(benchmark.Suite[Input, Output]):
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], inp: Input) -> Output:
-        net = VotingNet(inp, self.provisioner.hosts(1))
+        net = AutoVotingNet(inp, self.provisioner.hosts(1))
 
         if self.service_type("leaders") == "hydroflow":
             leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
@@ -126,6 +135,44 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                 '--prometheus-port',
                 str(net.prom_placement().leader.port),
             ])
+        else:
+            raise ValueError("AutoVoting only currently supports hydroflow leaders")
+
+        if self.service_type("collectors") == "hydroflow":
+            collector_procs: List[proc.Proc] = []
+            for (i, collector) in enumerate(net.prom_placement().collectors):
+                collector_procs.append(self.provisioner.popen_hydroflow(bench, f'collectors_{i}', 1, [
+                    '--service',
+                    'collector',
+                    '--prometheus-host',
+                    collector.host.ip(),
+                    '--prometheus-port',
+                    str(collector.port),
+                    '--collector.num-replica-groups',
+                    str(inp.num_replica_groups),
+                    '--collector.num-replica-partitions',
+                    str(inp.num_replica_partitions),
+                ]))
+        else:
+            raise ValueError("AutoVoting only currently supports hydroflow collectors")
+        
+        if self.service_type("broadcasters") == "hydroflow":
+            broadcaster_procs: List[proc.Proc] = []
+            for (i, broadcaster) in enumerate(net.prom_placement().broadcasters):
+                broadcaster_procs.append(self.provisioner.popen_hydroflow(bench, f'broadcasters_{i}', 1, [
+                    '--service',
+                    'broadcaster',
+                    '--prometheus-host',
+                    broadcaster.host.ip(),
+                    '--prometheus-port',
+                    str(broadcaster.port),
+                    '--broadcaster.num-replica-groups',
+                    str(inp.num_replica_groups),
+                    '--broadcaster.num-replica-partitions',
+                    str(inp.num_replica_partitions),
+                ]))
+        else:
+            raise ValueError("AutoVoting only currently supports hydroflow broadcasters")
         
         if self.service_type("replicas") == "hydroflow":
             replica_procs: List[proc.Proc] = []
@@ -140,9 +187,17 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                     '--prometheus-port',
                     str(replica.port),
                 ]))
+        else:
+            raise ValueError("AutoVoting only currently supports hydroflow replicas")
 
         bench.log("Reconfiguring the system for a new benchmark")
-        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients", "replicas"], "replicas": ["leaders"]})
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {
+            "clients": ["leaders"],
+            "leaders": ["broadcasters"],
+            "broadcasters": ["replicas"],
+            "replicas": ["collectors"],
+            "collectors": ["clients"],
+        })
         net.update(endpoints)
         bench.log("Reconfiguration completed")
 
@@ -166,60 +221,6 @@ class VotingSuite(benchmark.Suite[Input, Output]):
         # Increase the heap size.
         java += [f'-Xms{inp.jvm_heap_size}', f'-Xmx{inp.jvm_heap_size}']
 
-        # Launch leader.   
-        if self.service_type("leaders") == "scala":
-            leader_proc = bench.popen(
-                host=net.placement().leader.host,
-                label=f'leaders',
-                cmd=java + [
-                    '-cp',
-                    os.path.abspath(args['jar']),
-                    'frankenpaxos.voting.LeaderMain',
-                    '--config',
-                    config_filename,
-                    '--prometheus_host',
-                    net.prom_placement().leader.host.ip(),
-                    '--prometheus_port',
-                    str(net.prom_placement().leader.port),
-                    '--log_level',
-                    inp.log_level,
-                ]
-            )
-            if inp.profiled:
-                leader_proc = perf_util.JavaPerfProc(bench,
-                                                    net.placement().leader.host,
-                                                    leader_proc, f'leaders')
-        bench.log('Leader started.')
-
-        # Launch replicas
-        if self.service_type("replicas") == "scala":
-            replica_procs: List[proc.Proc] = []
-            for (i, replica) in enumerate(net.placement().replicas):
-                replica_proc = bench.popen(
-                    host=replica.host,
-                    label=f'replicas_{i}',
-                    cmd=java + [
-                        '-cp',
-                        os.path.abspath(args['jar']),
-                        'frankenpaxos.voting.ReplicaMain',
-                        '--config',
-                        config_filename,
-                        '--index',
-                        str(i),
-                        '--prometheus_host',
-                        net.prom_placement().replicas[i].host.ip(),
-                        '--prometheus_port',
-                        str(net.prom_placement().replicas[i].port),
-                        '--log_level',
-                        inp.log_level,
-                    ],
-                )
-                if inp.profiled:
-                    replica_proc = perf_util.JavaPerfProc(bench, replica.host,
-                                                        replica_proc, f'replicas_{i}')
-                replica_procs.append(replica_proc)
-        bench.log('Replicas started.')
-
         # Launch Prometheus.
         if inp.monitored:
             prometheus_config = prometheus.prometheus_config(
@@ -230,6 +231,14 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                     'voting_leader': [
                         f'{net.prom_placement().leader.host.ip()}:' +
                         f'{net.prom_placement().leader.port}'
+                    ],
+                    'voting_collector': [
+                        f'{e.host.ip()}:{e.port}'
+                        for e in net.prom_placement().collectors
+                    ],
+                    'voting_broadcaster': [
+                        f'{e.host.ip()}:{e.port}'
+                        for e in net.prom_placement().broadcasters
                     ],
                     'voting_replica': [
                         f'{e.host.ip()}:{e.port}'
@@ -244,6 +253,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                     'prometheus',
                     f'--config.file={bench.abspath("prometheus.yml")}',
                     f'--storage.tsdb.path={bench.abspath("prometheus_data")}',
+                    f'--web.listen-address=:0' # Arbitrary prometheus port to avoid conflicts
                 ],
             )
             bench.log('Prometheus started.')
@@ -304,7 +314,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
         # Wait for the client to finish and then terminate the server.
         client_proc.wait()
         leader_proc.kill()
-        for p in replica_procs:
+        for p in (replica_procs+collector_procs+broadcaster_procs):
              p.kill()
         if inp.monitored:
              prometheus_server.kill()

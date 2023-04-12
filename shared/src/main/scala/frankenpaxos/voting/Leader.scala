@@ -55,6 +55,9 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
   private val clients = mutable.Map[ByteString, Chan[Client[Transport]]]()
   private val votes = mutable.Map[RequestId, Int]()
 
+  val flushEveryN = 15
+  private var numMessagesSinceLastFlush = 0
+
   override def receive(
       src: Transport#Address,
       inbound: LeaderInbound
@@ -70,13 +73,15 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
           votes.put(requestId, votes(RequestId(reply.id, reply.clientAddress)) + 1)
           if (votes(requestId) == replicas.size) {
             votes.remove(requestId)
-            clients(reply.clientAddress).send(
+            numMessagesSinceLastFlush += 1
+            clients(reply.clientAddress).sendNoFlush(
               ClientReply(id = reply.id, accepted = true)
             )
           }
         } else {
           votes.remove(requestId)
-          clients(reply.clientAddress).send(
+          numMessagesSinceLastFlush += 1
+          clients(reply.clientAddress).sendNoFlush(
             ClientReply(id = reply.id, accepted = false)
           )
         }
@@ -89,11 +94,17 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
 
         votes.put(RequestId(request.id, request.clientAddress), 0)
 
+        numMessagesSinceLastFlush += replicas.length
         replicas.foreach(
-          _.send(
+          _.sendNoFlush(
             VoteRequest(id = request.id, clientAddress = request.clientAddress)
           )
         )
+        if (numMessagesSinceLastFlush >= flushEveryN) {
+          replicas.foreach(_.flush())
+          clients.foreach(_._2.flush())
+          numMessagesSinceLastFlush = 0
+        }
 
       case LeaderInbound.Request.Empty =>
         logger.fatal("Empty LeaderInbound encountered.")
