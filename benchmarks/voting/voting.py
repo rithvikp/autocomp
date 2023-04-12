@@ -65,7 +65,7 @@ class VotingNet:
         replicas: List[host.Endpoint]
 
     def prom_placement(self) -> Placement:
-        ports = itertools.count(40001, 100)
+        ports = itertools.count(30001, 100)
 
         def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)

@@ -13,7 +13,7 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'replicas': 10, # Max across any benchmark
+                    'replicas': 21, # Max across any benchmark
                     'collectors': 3, # Max across any benchmark
                     'broadcasters': 3, # Max across any benchmark
                     'clients': 1,
@@ -47,11 +47,11 @@ def main(args) -> None:
             return [
                 gen_input(client_procs, replica_groups, replica_partitions, collectors, broadcasters)
 
-                for client_procs in [100, 300, 500]
-                for replica_groups in [3,5,10]
-                for replica_partitions in [1]
-                for collectors in [3]
-                for broadcasters in [3]
+                for client_procs in [10, 25, 40, 50, 60, 75, 100, 125, 150, 175, 200, 275, 400]
+                for replica_groups in [7]
+                for replica_partitions in [1,3]
+                for collectors in [1]
+                for broadcasters in [1]
             ]#*3
 
         def summary(self, input: Input, output: Output) -> str:

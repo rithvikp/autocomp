@@ -45,8 +45,8 @@ def main(args) -> None:
                 # for client_procs in [1, 10, 25, 40, 50, 60, 75, 100, 125, 150, 175]
                 # for num_replicas in [3, 5]
 
-                for client_procs in [100, 300, 500]
-                for num_replicas in [3,5,10]
+                for client_procs in [10, 25, 40, 50, 60, 75, 100, 125, 150, 175, 200, 275, 400]
+                for num_replicas in [7]
             ]#*3
 
         def summary(self, input: Input, output: Output) -> str:

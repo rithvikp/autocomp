@@ -3,7 +3,8 @@ pub fn serve_prometheus(host: String, port: i32) {
         return;
     }
     let addr = format!("{}:{}", host, port).parse().unwrap();
-    prometheus_exporter::start(addr).expect("failed to start Prometheus");
+    prometheus_exporter::start(addr)
+        .expect(format!("failed to start Prometheus for host {host}, port {port}").as_str());
 }
 
 pub mod echo_proto {

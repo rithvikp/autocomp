@@ -12,7 +12,7 @@ class SmokeVotingSuite(VotingSuite):
         return {
             '1': {
                 'leaders': 1,
-                'replicas': 5, # Max across any benchmark
+                'replicas': 7, # Max across any benchmark
                 'clients': 1,
             },
         }
@@ -39,7 +39,7 @@ class SmokeVotingSuite(VotingSuite):
 
         return [
             # gen_input(10, 5),
-            gen_input(100, 5),
+            gen_input(100, 7),
         ]
 
         # return [

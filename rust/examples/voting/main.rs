@@ -28,9 +28,8 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    let ports = hydroflow::util::cli::init().await;
-
     frankenpaxos::serve_prometheus(args.prometheus_host, args.prometheus_port);
+    let ports = hydroflow::util::cli::init().await;
 
     match args.service {
         Service::Leader => leader::run(args.leader, ports).await,

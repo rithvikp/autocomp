@@ -100,14 +100,15 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
             VoteRequest(id = request.id, clientAddress = request.clientAddress)
           )
         )
-        if (numMessagesSinceLastFlush >= flushEveryN) {
-          replicas.foreach(_.flush())
-          clients.foreach(_._2.flush())
-          numMessagesSinceLastFlush = 0
-        }
 
       case LeaderInbound.Request.Empty =>
         logger.fatal("Empty LeaderInbound encountered.")
+    }
+
+    if (numMessagesSinceLastFlush >= flushEveryN) {
+      replicas.foreach(_.flush())
+      clients.foreach(_._2.flush())
+      numMessagesSinceLastFlush = 0
     }
   }
 }
