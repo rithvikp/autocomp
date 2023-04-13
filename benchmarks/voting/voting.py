@@ -247,6 +247,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                     'prometheus',
                     f'--config.file={bench.abspath("prometheus.yml")}',
                     f'--storage.tsdb.path={bench.abspath("prometheus_data")}',
+                    f'--web.listen-address=:0' # Arbitrary prometheus port to avoid conflicts
                 ],
             )
             bench.log('Prometheus started.')
