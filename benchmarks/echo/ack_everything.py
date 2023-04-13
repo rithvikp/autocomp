@@ -28,9 +28,11 @@ class AckEverythingEchoSuite(EchoSuite):
                 jvm_heap_size='100m',
                 persist_log=self._persist,
                 flush_every_n=1, # Do not change, flush_every_n does not work for this benchmark
-                duration=datetime.timedelta(seconds=60),
+                # duration=datetime.timedelta(seconds=60),
+                duration=datetime.timedelta(seconds=10),
                 timeout=datetime.timedelta(seconds=120),
-                warmup_duration=datetime.timedelta(seconds=15),
+                # warmup_duration=datetime.timedelta(seconds=15),
+                warmup_duration=datetime.timedelta(seconds=5),
                 warmup_timeout=datetime.timedelta(seconds=30),
                 warmup_sleep=datetime.timedelta(seconds=1),
                 # Need a large lag in order for Prometheus to initialize correctly
@@ -42,14 +44,14 @@ class AckEverythingEchoSuite(EchoSuite):
             )
 
         return [
-            gen_input(1),
-            gen_input(10),
-            gen_input(25),
+            # gen_input(1),
+            # gen_input(10),
+            # gen_input(25),
             gen_input(50),
-            gen_input(75),
+            # gen_input(75),
             gen_input(100),
-            gen_input(125),
-            gen_input(150),
+            # gen_input(125),
+            # gen_input(150),
             gen_input(175),
             # gen_input(200),
         ]#*3

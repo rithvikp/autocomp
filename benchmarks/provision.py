@@ -113,7 +113,7 @@ class ManualState(State):
 class HydroState(State):
     def __init__(self, config: Dict[str, Any], spec: Dict[str, Dict[str, int]], args):
         super().__init__(config, spec, args)
-        if config["env"]["cloud"] != "gcp":
+        if config["env"]["cloud"] != "gcp" and config["env"]["cloud"] != "local":
             raise ValueError(f'Unsupported cloud for Hydro CLI deployments: {config["env"]["cloud"]}')
 
         # Mapping from f to role to machines
@@ -130,7 +130,8 @@ class HydroState(State):
         self._connect_to_all()
     
     def identity_file(self) -> str:
-        assert self._identity_file != ""
+        if self._identity_file == "":
+            return super().identity_file()
         return self._identity_file
 
     def _internal_ip(self, m: hydro.Host) -> str:
@@ -186,33 +187,41 @@ class HydroState(State):
         deployment = self._deployment
         config = self._config
 
-        gcp_vpc = hydro.GCPNetwork(
-            project=self._config["env"]["project"],
-            existing=self._config["env"]["vpc"],
-        )
-        self._gcp_vpc = gcp_vpc
+        if config["env"]["cloud"] == "gcp":
+            gcp_vpc = hydro.GCPNetwork(
+                project=self._config["env"]["project"],
+                existing=self._config["env"]["vpc"],
+            )
+            self._gcp_vpc = gcp_vpc
 
         last_machine = None
         custom_services = []
+        if config["env"]["cloud"] == "local":
+            # FIXME[Hydro CLI]: Remove once multiple localhost objects can be used
+            localhost = deployment.Localhost()
         for f, cluster in self._spec.items():
             self._machines[f] = {}
             for role, count in cluster.items():
                 hydroflow = config["services"][role]["type"] == "hydroflow"
-                if hydroflow:
-                    image = config["env"]["hydroflow_image"]
-                else:
-                    image = config["env"]["scala_image"]
+                if config["env"]["cloud"] == "gcp":
+                    if hydroflow:
+                        image = config["env"]["hydroflow_image"]
+                    else:
+                        image = config["env"]["scala_image"]
                 self._machines[f][role] = []
 
                 for i in range(count):
-                    machine = deployment.GCPComputeEngineHost(
-                        project=config["env"]["project"],
-                        machine_type=config["env"]["machine_type"],
-                        image=image,
-                        region=config["env"]["zone"],
-                        network=gcp_vpc,
-                        user=config["env"]["user"],
-                    )
+                    if config["env"]["cloud"] == "gcp":
+                        machine = deployment.GCPComputeEngineHost(
+                            project=config["env"]["project"],
+                            machine_type=config["env"]["machine_type"],
+                            image=image,
+                            region=config["env"]["zone"],
+                            network=gcp_vpc,
+                            user=config["env"]["user"],
+                        )
+                    elif config["env"]["cloud"] == "local":
+                        machine = localhost
 
                     # FIXME[Hydro CLI]: Change this once ports can be opened after a machine
                     # is started or port opening can be disabled when creating HydroflowCrate services.
@@ -226,7 +235,8 @@ class HydroState(State):
 
         if last_machine is None:
             raise ValueError("No machines were provisioned")
-        self._identity_file = last_machine.ssh_key_path
+        if hasattr(last_machine, 'ssh_key_path'):
+            self._identity_file = last_machine.ssh_key_path
     
 
     def cluster_definition(self) -> Dict[str, Dict[str, List[str]]]:

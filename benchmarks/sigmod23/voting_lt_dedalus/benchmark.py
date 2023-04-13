@@ -46,7 +46,7 @@ def main(args) -> None:
                 # for client_procs in [1, 10, 25, 40, 50, 60, 75, 100, 125, 150, 175]
                 # for num_replicas in [3, 5]
 
-                for client_procs in [10, 25, 40, 50, 60, 75, 100, 125, 150, 175, 200, 250, 300, 400, 500]
+                for client_procs in [25, 50, 75, 125, 175, 250, 400]
                 for num_replicas in [3,7]
                 for leader_flush_every_n in [15,1]
             ]#*3

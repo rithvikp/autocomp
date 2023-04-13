@@ -48,7 +48,7 @@ def main(args) -> None:
             return [
                 gen_input(client_procs, replica_groups, replica_partitions, collectors, broadcasters, leader_flush_every_n)
 
-                for client_procs in [10, 25, 50, 75, 125, 175, 250, 400]
+                for client_procs in [25, 50, 75, 125, 175, 250, 400]
                 for replica_groups in [7]
                 for replica_partitions in [1,3]
                 for collectors in [1,3]
