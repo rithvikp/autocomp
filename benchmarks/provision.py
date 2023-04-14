@@ -322,7 +322,7 @@ class HydroState(State):
                 self._services[role].append(self._deployment.CustomService(machine, []))
 
         # Sending and receiving is with respect to the custom service
-        self._custom_ports: Dict[str, Dict[str, List[hydro.CustomServicePort]]] = {"send": {}, "receive": {}}
+        self._custom_ports: Dict[str, Dict[str, Tuple[str, List[hydro.CustomServicePort]]]] = {"send": {}, "receive": {}}
 
         # For every connection pair, generate the correct set of ports and link them together
         for sender, conn_receivers in connections.items():
@@ -344,14 +344,14 @@ class HydroState(State):
                     receivers = [getattr(n.ports, f'receive_from${sender}${index}').merge() for n in self._services[receiver]]
                 else:
                     assert sender not in self._custom_ports["receive"], f"Hyrdoflow process {sender} can only send to one custom service"
-                    self._custom_ports["receive"][sender] = []
+                    self._custom_ports["receive"][sender] = (receiver, [])
                     receivers = []
                     for s in self._services[receiver]:
                         for _ in range(len(self._services[sender])):
                             receiver_port = s.client_port()
                             receivers.append(receiver_port)
                             # Custom ports need to be tracked separately so the final port allocations can be discovered.
-                            self._custom_ports["receive"][sender].append(receiver_port)
+                            self._custom_ports["receive"][sender][1].append(receiver_port)
 
                 # Generate a list of sender ports, one for each service in the given role.
                 senders = []
@@ -361,12 +361,12 @@ class HydroState(State):
                         senders.append(sender_port)
                 else:
                     assert receiver not in self._custom_ports["send"], f"Hydroflow process {receiver} can only receive from one custom service"
-                    self._custom_ports["send"][receiver] = []
+                    self._custom_ports["send"][receiver] = (sender, [])
 
                     for s in self._services[sender]:
                         sender_port = s.client_port()
                         senders.append(sender_port)
-                        self._custom_ports["send"][receiver].append(sender_port)
+                        self._custom_ports["send"][receiver][1].append(sender_port)
 
                 # Connect the senders to the receivers
                 if receiver_hf:
@@ -376,7 +376,7 @@ class HydroState(State):
                     for i, s in enumerate(senders):
                         s.tagged(i).send_to(demux)
                 else:
-                    # This special case is needed since custom ports can't be used with demuxes
+                    # This special case is needed since custom ports can't be used with tagged senders
                     num_receivers = len(self._services[receiver])
                     for i, s in enumerate(senders):
                         demux = hydro.demux({
@@ -429,15 +429,15 @@ class HydroState(State):
         self._hydroflow_receive_endpoints: Dict[str, List[host.Endpoint]] = {}
 
         # Gather all the endpoints for scala --> hydroflow connections
-        for receiver, ports in self._custom_ports["send"].items():
+        for receiver, sender_ports in self._custom_ports["send"].items():
             # Sender is always a custom service and receiver is always a hydroflow service
-            assert len(ports) == 1, "A scala process can currently only talk to a single hydroflow process"
-            for port in ports:
+            sender = sender_ports[0]
+            for port in sender_ports[1]:
                 addrs = (await port.server_port()).json()['Demux']
                 assert len(addrs) == len(self._services[receiver]), (f"The number of "+
                     f"addresses does not match the number of nodes with the role {receiver}.")
-                assert receiver not in self._hydroflow_endpoints, (f"Multiple scala processes cannot "+
-                    f"currently communicate with the same hydroflow process: {receiver}")
+                # assert receiver not in self._hydroflow_endpoints, (f"Multiple scala processes cannot "+
+                    # f"currently communicate with the same hydroflow process: {receiver}")
 
                 self._hydroflow_endpoints[receiver] = [None]*len(addrs)
                 for index, addr in addrs.items():
@@ -452,10 +452,12 @@ class HydroState(State):
 
         # Gather all the endpoints for hydroflow --> scala connections
         # These are back channels on which Scala will not send messages (but hydroflow will)
-        for sender, ports in self._custom_ports["receive"].items():
+        assert len(self._custom_ports["receive"]) == 1, "Only one scala service can currently receive from any hydroflow service"
+        for sender, receiver_ports in self._custom_ports["receive"].items():
+            receiver = receiver_ports[0]
             # Sender is always a hydroflow service and receiver is always a custom service
             self._hydroflow_receive_endpoints[sender] = []
-            for port in ports:
+            for port in receiver_ports[1]:
                 addr = (await port.server_port()).json()
                 addr = addr["TcpPort"]
                 decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)

@@ -24,6 +24,9 @@ import time
 import tqdm
 import yaml
 
+class DistributionScheme(enum.Enum):
+    HASH = 'HASH'
+    COLOCATED = 'COLOCATED'
 
 # Input/Output #################################################################
 class ClientOptions(NamedTuple):
@@ -52,6 +55,13 @@ class ReplicaOptions(NamedTuple):
     recover_log_entry_max_period: datetime.timedelta = \
         datetime.timedelta(seconds=20)
     unsafe_dont_recover: bool = False
+
+
+class LeaderOptions(NamedTuple):
+    flush_every_n: int
+    p1a_timeout: int
+    i_am_leader_resend_timeout: int
+    i_am_leader_check_timeout: int
 
 
 class Input(NamedTuple):
@@ -85,6 +95,9 @@ class Input(NamedTuple):
     monitored: bool
     prometheus_scrape_interval: datetime.timedelta
 
+    # Leader options. ##########################################################
+    leader_options: LeaderOptions
+
     # Replica options. #########################################################
     replica_options: ReplicaOptions
     replica_log_level: str
@@ -117,6 +130,23 @@ class DedalusMultiPaxosNet:
     def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
         self._endpoints = endpoints
 
+    def prom_placement(self) -> Placement:
+        ports = itertools.count(40001, 100)
+
+        def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
+            return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
+
+        def portify(role: str, n: int) -> List[host.Endpoint]:
+            assert n <= len(self._endpoints[role]), f"Role {role} does not have enough machines"
+            return [portify_one(e) for e in self._endpoints[role][:n]]
+
+        return self.Placement(
+            clients=portify('clients', self._input.num_client_procs),
+            leaders=portify('leaders', self._input.num_leaders),
+            acceptors=portify('acceptors', self._input.num_acceptors),
+            replicas=portify('replicas', self._input.num_replicas),
+        )
+
     def placement(self) -> Placement:
         ports = itertools.count(10000, 100)
 
@@ -126,7 +156,7 @@ class DedalusMultiPaxosNet:
             return e
 
         def portify(role: str, n: int) -> List[host.Endpoint]:
-            assert n <= len(self._endpoints[role])
+            assert n <= len(self._endpoints[role]), f"Role {role} does not have enough machines"
             return [portify_one(e) for e in self._endpoints[role][:n]]
 
         return self.Placement(
@@ -145,8 +175,14 @@ class DedalusMultiPaxosNet:
                 'host': e.host.ip(),
                 'port': e.port
             } for e in self.placement().leaders],
-            'leader_election_address': [],
-            'proxy_leader_address': [],
+            'leader_election_address': [{
+                'host': e.host.ip(),
+                'port': e.port
+            } for e in self.placement().leaders],
+            'proxy_leader_address': [{
+                'host': e.host.ip(),
+                'port': e.port
+            } for e in self.placement().leaders],
             'acceptor_address': [{
                 'acceptor_address': [{
                     'host': e.host.ip(),
@@ -157,9 +193,12 @@ class DedalusMultiPaxosNet:
                 'host': e.host.ip(),
                 'port': e.port
             } for e in self.placement().replicas],
-            'proxy_replica_address': [],
+            'proxy_replica_address': [{
+                'host': e.host.ip(),
+                'port': e.port
+            } for e in self.placement().replicas],
             'flexible': False,
-            'distribution_scheme': 'COLOCATED'
+            'distribution_scheme': DistributionScheme.COLOCATED
         }
 
 
@@ -169,8 +208,8 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                       bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any],
                       input: Input) -> Output:
-        
-        net = DedalusMultiPaxosNet(input, input.endpoints)
+        assert input.f*2 + 1 == input.num_acceptors
+        net = DedalusMultiPaxosNet(input, self.provisioner.hosts(input.f))
 
         # Launch acceptors.
         if self.service_type("acceptors") == "hydroflow":
@@ -179,11 +218,11 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                 acceptor_procs.append(self.provisioner.popen_hydroflow(bench, f'acceptors_{i}', input.f, [
                     '--service',
                     'acceptor',
-                    '--index',
+                    '--acceptor.index',
                     str(i),
-                    '--prometheus_host',
+                    '--prometheus-host',
                     acceptor.host.ip(),
-                    '--prometheus_port',
+                    '--prometheus-port',
                     str(acceptor.port),
                 ]))
         else:
@@ -192,23 +231,32 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
         # Launch leaders.
         leader_procs: List[proc.Proc] = []
         for (i, leader) in enumerate(net.prom_placement().leaders):
-            leader_procs.append(self.provisioner.popen(bench, f'leaders_{i}', input.f, [
+            leader_procs.append(self.provisioner.popen_hydroflow(bench, f'leaders_{i}', input.f, [
                 '--service',
-                'leader'
-                '--index',
+                'leader',
+                '--leader.flush-every-n',
+                str(input.leader_options.flush_every_n),
+                '--leader.p1a-timeout',
+                str(input.leader_options.p1a_timeout),
+                '--leader.i-am-leader-resend-timeout',
+                str(input.leader_options.i_am_leader_resend_timeout),
+                '--leader.i-am-leader-check-timeout',
+                str(input.leader_options.i_am_leader_check_timeout),
+                '--leader.index',
                 str(i),
-                '--prometheus_host',
+                '--leader.f',
+                str(input.f),
+                '--prometheus-host',
                 leader.host.ip(),
-                '--prometheus_port',
+                '--prometheus-port',
                 str(leader.port)
             ]))
 
         bench.log("Reconfiguring the system for a new benchmark")
         endpoints, receive_endpoints = self.provisioner.rebuild(1, {
             "clients": ["leaders"],
-            "leaders": ["acceptors"],
-            "acceptors": ["leaders"],
-            "leaders": ["replicas"],
+            "leaders": ["acceptors", "acceptors", "leaders", "replicas"],
+            "acceptors": ["leaders", "leaders", "leaders"],
             "replicas": ["clients"],
         })
         net.update(endpoints)
@@ -253,7 +301,7 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                     '--state_machine',
                     input.state_machine,
                     '--prometheus_host',
-                    net.prom_placement().replicas[i].host.ip()
+                    net.prom_placement().replicas[i].host.ip(),
                     '--prometheus_port',
                     str(net.prom_placement().replicas[i].port),
                     '--options.logGrowSize',

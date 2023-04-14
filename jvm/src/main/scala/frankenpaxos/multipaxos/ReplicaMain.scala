@@ -28,7 +28,8 @@ object ReplicaMain extends App {
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009,
       // Options.
-      options: ReplicaOptions = ReplicaOptions.default
+      options: ReplicaOptions = ReplicaOptions.default,
+      receiveAddrs: String = ""
   )
 
   implicit class OptionsWrapper[A](o: scopt.OptionDef[A, Flags]) {
@@ -55,6 +56,8 @@ object ReplicaMain extends App {
     opt[Int]("prometheus_port")
       .action((x, f) => f.copy(prometheusPort = x))
       .text(s"-1 to disable")
+
+    opt[String]("receive_addrs").action((x, f) => f.copy(receiveAddrs = x))
 
     // Options.
     opt[Int]("options.logGrowSize")
@@ -90,6 +93,16 @@ object ReplicaMain extends App {
     config = config,
     options = flags.options
   )
+
+  val receiveChans: Unit = for (addr <- flags.receiveAddrs.split(",")) {
+    if (addr != "") {
+      addr.split(":") match {
+        case Array(host, port) =>
+          replica.send(NettyTcpAddress(new InetSocketAddress(host, port.toInt)), Array[Byte]())
+        case default => throw new IllegalArgumentException(s"Invalid receive address $addr")
+      }
+    }
+  }
 
   // Start Prometheus.
   PrometheusUtil.server(flags.prometheusHost, flags.prometheusPort)

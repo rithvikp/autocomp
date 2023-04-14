@@ -1,7 +1,7 @@
-from benchmarks.autovoting.autovoting import *
+from benchmarks.multipaxos.dedalus_multipaxos import *
 
 def main(args) -> None:
-    class Suite(AutoVotingSuite):
+    class Suite(DedalusMultiPaxosSuite):
         def __init__(self, args) -> None:
             self._args = args
             super().__init__()
@@ -12,66 +12,132 @@ def main(args) -> None:
         def cluster_spec(self) -> Dict[str, Dict[str, int]]:
             return {
                 '1': {
-                    'leaders': 1,
-                    'replicas': 21, # Max across any benchmark
-                    'collectors': 3, # Max across any benchmark
-                    'broadcasters': 3, # Max across any benchmark
-                    'clients': 1,
+                    'leaders': 2,
+                    'replicas': 3, # Max across any benchmark
+                    'clients': 1, # Max across any benchmark
+                    'acceptors': 3, # Max across any benchmark
                 },
             }
 
         def inputs(self) -> Collection[Input]:
-            def gen_input(clients: int, replica_groups: int, replica_partitions: int, collectors: int, broadcasters: int, leader_flush_every_n: int) -> Input:
-                return Input(
-                    num_clients_per_proc=clients,
-                    num_replica_groups=replica_groups,
-                    num_replica_partitions=replica_partitions,
-                    num_broadcasters=broadcasters,
-                    num_collectors=collectors,
-                    jvm_heap_size='100m',
-                    duration=datetime.timedelta(seconds=60),
-                    timeout=datetime.timedelta(seconds=120),
-                    warmup_duration=datetime.timedelta(seconds=15),
-                    warmup_timeout=datetime.timedelta(seconds=30),
-                    warmup_sleep=datetime.timedelta(seconds=1),
-                    # Need a large lag in order for Prometheus to initialize correctly
-                    client_lag=datetime.timedelta(seconds=10),
-                    log_level=self.args()['log_level'],
-                    leader_flush_every_n=leader_flush_every_n,
-                    profiled=self._args.profile,
-                    monitored=self._args.monitor,
-                    prometheus_scrape_interval=datetime.timedelta(
-                        milliseconds=200),
+            return [
+                Input(
+                    f = 1,
+                    num_client_procs = num_client_procs,
+                    num_warmup_clients_per_proc = num_clients_per_proc,
+                    num_clients_per_proc = num_clients_per_proc,
+                    num_leaders = 2,
+                    num_acceptors = num_acceptors,
+                    num_replicas = num_replicas,
+                    client_jvm_heap_size = '8g',
+                    replica_jvm_heap_size = '12g',
+                    measurement_group_size = 10,
+                    warmup_duration = datetime.timedelta(seconds=10),
+                    warmup_timeout = datetime.timedelta(seconds=15),
+                    warmup_sleep = datetime.timedelta(seconds=5),
+                    duration = datetime.timedelta(seconds=15),
+                    timeout = datetime.timedelta(seconds=20),
+                    client_lag = datetime.timedelta(seconds=5),
+                    state_machine = 'KeyValueStore',
+                    predetermined_read_fraction = -1,
+                    workload_label = 'write_only',
+                    workload =
+                      read_write_workload.UniformReadWriteWorkload(
+                        num_keys=1,
+                        read_fraction=0.0,
+                        write_size_mean=value_size,
+                        write_size_std=0),
+                    read_workload =
+                      read_write_workload.UniformReadWriteWorkload(
+                        num_keys=1,
+                        read_fraction=1.0,
+                        write_size_mean=value_size,
+                        write_size_std=0),
+                    write_workload =
+                      read_write_workload.UniformReadWriteWorkload(
+                        num_keys=1,
+                        read_fraction=0.0,
+                        write_size_mean=value_size,
+                        write_size_std=0),
+                    read_consistency = 'linearizable',
+                    profiled = args.profile,
+                    monitored = args.monitor,
+                    prometheus_scrape_interval =
+                        datetime.timedelta(milliseconds=200),
+                    leader_options = LeaderOptions(
+                        flush_every_n = leader_flush_every_n,
+                        p1a_timeout = 1,
+                        i_am_leader_resend_timeout = 1,
+                        i_am_leader_check_timeout = 1,
+                    ),
+                    replica_options = ReplicaOptions(
+                        log_grow_size = 5000,
+                        unsafe_dont_use_client_table = False,
+                        send_chosen_watermark_every_n_entries = 100,
+                        recover_log_entry_min_period = \
+                            datetime.timedelta(seconds=2),
+                        recover_log_entry_max_period = \
+                            datetime.timedelta(seconds=5),
+                        unsafe_dont_recover = False,
+                    ),
+                    replica_log_level = args.log_level,
+                    client_options = ClientOptions(
+                        resend_client_request_period =
+                            datetime.timedelta(seconds=1),
+                        resend_max_slot_requests_period =
+                            datetime.timedelta(seconds=1),
+                        resend_read_request_period =
+                            datetime.timedelta(seconds=1),
+                        resend_sequential_read_request_period =
+                            datetime.timedelta(seconds=1),
+                        resend_eventual_read_request_period =
+                            datetime.timedelta(seconds=1),
+                        unsafe_read_at_first_slot = False,
+                        unsafe_read_at_i = False,
+                        flush_writes_every_n = 1,
+                        flush_reads_every_n = 1,
+                    ),
+                    client_log_level = args.log_level,
                 )
 
 
-            return [
-                gen_input(client_procs, replica_groups, replica_partitions, collectors, broadcasters, leader_flush_every_n)
-
-                for client_procs in [25, 50, 75, 125, 175, 250, 400]
-                for replica_groups in [7]
-                for replica_partitions in [1,3]
-                for collectors in [1,3]
-                for broadcasters in [1,3]
-                for leader_flush_every_n in [15]
-            ]#*3
+                # for value_size in [16, 100, 1000]
+                for value_size in [100]
+                for num_acceptors in [3]
+                for num_replicas in [3]
+                for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
+                    (1, 1, 1),
+                    # (1, 50, 10),
+                    # (1, 100, 10),
+                    # (2, 100, 10),
+                    # (3, 100, 10),
+                    # (4, 100, 10),
+                    # (5, 100, 10),
+                    # (6, 100, 10),
+                    # (7, 100, 10),
+                    # (8, 100, 10),
+                    # (9, 100, 10),
+                    # (10, 100, 10),
+                ]
+            ] * 5
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
+                'f': input.f,
+                'value_size': input.workload,
+                'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
-                'num_replica_groups': input.num_replica_groups,
-                'num_replica_partitions': input.num_replica_partitions,
-                'num_broadcasters': input.num_broadcasters,
-                'num_collectors': input.num_collectors,
+                'num_acceptors': input.num_acceptors,
+                'num_replicas': input.num_replicas,
                 'leader_flush_every_n': input.leader_flush_every_n,
-                'latency.median_ms': output.latency.median_ms,
-                'start_throughput_1s.p90': output.start_throughput_1s.p90,
+                'write.latency.median_ms': f'{output.write_output.latency.median_ms:.6}',
+                'write.start_throughput_1s.p90': f'{output.write_output.start_throughput_1s.p90:.8}',
             })
 
 
     suite = Suite(args)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'autovoting_lt_dedalus') as dir:
+                                  'multipaxos_lt_dedalus') as dir:
         suite.run_suite(dir)
 
 

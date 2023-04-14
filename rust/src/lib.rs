@@ -14,3 +14,7 @@ pub mod echo_proto {
 pub mod voting_proto {
     include!(concat!(env!("OUT_DIR"), "/frankenpaxos.voting.rs"));
 }
+
+pub mod multipaxos_proto {
+    include!(concat!(env!("OUT_DIR"), "/frankenpaxos.multipaxos.rs"));
+}
