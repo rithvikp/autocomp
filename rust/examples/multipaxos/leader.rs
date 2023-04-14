@@ -2,7 +2,6 @@ use frankenpaxos::multipaxos_proto;
 use hydroflow::bytes::BytesMut;
 use hydroflow::tokio_stream::wrappers::IntervalStream;
 use hydroflow::util::{
-    batched_sink,
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
         ConnectedTagged, ServerOrBound,
@@ -174,7 +173,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 .input acceptors `repeat_iter(acceptors.clone()) -> map(|p| (p,))`
 .input proposers `repeat_iter(proposers.clone()) -> map(|p| (p,))`
 .input quorum `repeat_iter([(f+1,),])`
-.input fullQuorum `repeat_iter([(2*f+1,),])` 
+.input fullQuorum `repeat_iter([(2*f+1,),])`
 .input noop `repeat_iter([serialize_noop(),])` // FIXME: Serialize a noop
 
 # Debug
@@ -203,13 +202,13 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 .input startSlot `repeat_iter([(0 as u32,),])`
 
 # p1a: proposerID, ballotID, ballotNum
-.async p1a `map(|(node_id, v):(u32,(u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p1a_sink)` `null::<(u32,u32,u32)>()` 
+.async p1a `map(|(node_id, v):(u32,(u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p1a_sink)` `null::<(u32,u32,u32)>()`
 # p1b: acceptorID, logSize, ballotID, ballotNum, maxBallotID, maxBallotNum
 .async p1bU `null::<(u32,u32,u32,u32,u32,u32,)>()` `source_stream(p1b_source) -> map(|v: Result<(u32,BytesMut,), _>| deserialize_from_bytes::<(u32,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 # p1bLog: acceptorID, payload, slot, payloadBallotID, payloadBallotNum, ballotID, ballotNum
 .async p1bLogU `null::<(u32,Vec<u8>,u32,u32,u32,u32,u32,)>()` `source_stream(p1b_log_source) -> map(|v: Result<(u32,BytesMut,), _>| deserialize_from_bytes::<(u32,Vec<u8>,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 # p2a: proposerID, payload, slot, ballotID, ballotNum
-.async p2a `map(|(node_id, v):(u32,(u32,Vec<u8>,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p2a_sink)` `null::<(u32,Vec<u8>,u32,u32,u32)>()` 
+.async p2a `map(|(node_id, v):(u32,(u32,Vec<u8>,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p2a_sink)` `null::<(u32,Vec<u8>,u32,u32,u32)>()`
 # p2b: acceptorID, payload, slot, ballotID, ballotNum, maxBallotID, maxBallotNum
 .async p2bU `null::<(u32,Vec<u8>,u32,u32,u32,u32,u32)>()` `source_stream(p2b_source) -> map(|v| deserialize_from_bytes::<(u32,Vec<u8>,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 
@@ -220,7 +219,6 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 # iAmLeader: ballotID, ballotNum. Note: this is both a source and a sink
 .async iAmLeaderU `map(|(node_id, v):(u32,(u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(i_am_leader_sink)` `source_stream(i_am_leader_source) -> map(|v: Result<BytesMut, _>| deserialize_from_bytes::<(u32,u32,)>(v.unwrap()).unwrap())`
 ######################## end relation definitions
-
 
 # inputs that are persisted must have an alias. Format: inputU = unpersisted input.
 p1b(a, l, i, n, mi, mn) :- p1bU(a, l, i, n, mi, mn)
@@ -238,7 +236,6 @@ iAmLeader(i, n) :+ iAmLeader(i, n), !iAmLeaderCheckTimeout() # clear iAmLeader p
 payloads(p) :- clientIn(p)
 payloads(p) :+ payloads(p), !ChosenPayload(p)
 
-
 # Initialize
 ballot(zero) :- startBallot(zero)
 
@@ -251,13 +248,12 @@ p1bLogOut(pid, a, payload, slot, payloadBallotID, payloadBallotNum, id, num) :- 
 p2aOut(a, i, no, slot, i, num) :- FilledHoles(no, slot), id(i), ballot(num), acceptors(a) # Weird bug where if this line is commented out, id has an error?
 // p2aOut(a, i, payload, slot, i, num) :- ChosenPayload(payload), nextSlot(slot), id(i), ballot(num), acceptors(a)
 // p2bOut(pid, a, payload, slot, id, num, maxID, maxNum) :- id(pid), p2bU(a, payload, slot, id, num, maxID, maxNum)
-// iAmLeaderSendOut(pid, i, num) :- id(i), ballot(num), IsLeader(), proposers(pid), iAmLeaderResendTimeout(), !id(pid) 
+// iAmLeaderSendOut(pid, i, num) :- id(i), ballot(num), IsLeader(), proposers(pid), iAmLeaderResendTimeout(), !id(pid)
 iAmLeaderReceiveOut(pid, i, num) :- id(pid), iAmLeaderU(i, num)
 LeaderExpiredOut(pid) :- id(pid), LeaderExpired()
 throughputOut(num) :- totalCommitted(num), p1aTimeout(), IsLeader()
 nextSlotOut(num) :- nextSlot(num), p1aTimeout(), IsLeader()
 acceptorThroughputOut(acceptorID, num) :- totalAcceptorSentP2bs(acceptorID, num), p1aTimeout(), IsLeader()
-
 
 ######################## stable leader election
 RelevantP1bs(acceptorID, logSize) :- p1b(acceptorID, logSize, i, num, maxID, maxNum), id(i), ballot(num)
@@ -281,9 +277,7 @@ p1a@a(i, i, num) :~ id(i), ballot(num), !NewBallot(newNum), p1aTimeout(), Leader
 NewBallot(maxNum + 1) :- MaxReceivedBallot(maxId, maxNum), id(i), ballot(num), (maxNum >= num), (maxId != i)
 ballot(num) :+ NewBallot(num)
 ballot(num) :+ ballot(num), !NewBallot(newNum)
-######################## end stable leader election 
-
-
+######################## end stable leader election
 
 ######################## reconcile p1b log with local log
 RelevantP1bLogs(acceptorID, payload, slot, payloadBallotID, payloadBallotNum) :- p1bLog(acceptorID, payload, slot, payloadBallotID, payloadBallotNum, i, num), id(i), ballot(num)
@@ -299,7 +293,7 @@ P1bMatchingEntry(payload, slot, count(acceptorID), payloadBallotID, payloadBallo
 # what was committed = store in local log. Note: Don't need to worry about overwriting; it's impossible to have f+1 matching for the same slot and another payload with a higher ballot; therefore this slot must already have the same payload (maybe with a lower ballot)
 CommittedLog(payload, slot) :- P1bMatchingEntry(payload, slot, c, payloadBallotID, payloadBallotNum), quorum(size), (c >= size)
 
-# what was not committed = find max ballot, store in local log, resend 
+# what was not committed = find max ballot, store in local log, resend
 P1bLargestEntryBallotNum(slot, max(payloadBallotNum)) :- RelevantP1bLogs(acceptorID, payload, slot, payloadBallotID, payloadBallotNum)
 P1bLargestEntryBallot(slot, max(payloadBallotID), payloadBallotNum) :- P1bLargestEntryBallotNum(slot, payloadBallotNum), RelevantP1bLogs(acceptorID, payload, slot, payloadBallotID, payloadBallotNum)
 # makes sure that p2as cannot be sent yet; otherwise resent slots might conflict. Once p2as can be sent, a new p1b log might tell us to propose a payload for the same slot we propose (in parallel) for p2a, which violates an invariant.
@@ -319,9 +313,7 @@ p2a@a(i, no, slot, i, num) :~ FilledHoles(no, slot), id(i), ballot(num), accepto
 nextSlot(s+1) :+ IsLeader(), MaxProposedSlot(s), !nextSlot(s2)
 ######################## end reconcile p1b log with local log
 
-
-
-######################## send p2as 
+######################## send p2as
 # assign a slot
 ChosenPayload(choose(payload)) :- payloads(payload), nextSlot(s), IsLeader() # drop all payloads that we can't handle in this tick by not persisting clientIn
 p2a@a(i, payload, slot, i, num) :~ ChosenPayload(payload), nextSlot(slot), id(i), ballot(num), acceptors(a)
@@ -329,9 +321,7 @@ p2a@a(i, payload, slot, i, num) :~ ChosenPayload(payload), nextSlot(slot), id(i)
 nextSlot(s+1) :+ ChosenPayload(payload), nextSlot(s)
 # Don't increment the slot if no payload was chosen, but we are still the leader
 nextSlot(s) :+ !ChosenPayload(payload), nextSlot(s), IsLeader()
-######################## end send p2as 
-
-
+######################## end send p2as
 
 ######################## process p2bs
 CountMatchingP2bs(payload, slot, count(acceptorID), i, num) :- p2b(acceptorID, payload, slot, i, num, payloadBallotID, payloadBallotNum)
@@ -350,7 +340,7 @@ totalAcceptorSentP2bs(acceptorID, new) :+ !totalAcceptorSentP2bs(acceptorID, pre
 totalAcceptorSentP2bs(acceptorID, prev) :+ totalAcceptorSentP2bs(acceptorID, prev), !acceptorSentP2bs(acceptorID, new)
 totalAcceptorSentP2bs(acceptorID, (prev + new)) :+ totalAcceptorSentP2bs(acceptorID, prev), acceptorSentP2bs(acceptorID, new)
 ######################## end process p2bs
-"#
+    "#
     );
 
     launch_flow(df).await

@@ -1,6 +1,5 @@
 use frankenpaxos::voting_proto;
 use hydroflow::util::{
-    batched_sink,
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
         ConnectedTagged, ServerOrBound,
@@ -65,12 +64,13 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await;
 
     let peers = to_replica_port.keys.clone();
-    let to_replica_unbatched_sink = to_replica_port.into_sink();
-    let to_replica_sink = batched_sink(
-        to_replica_unbatched_sink,
-        cfg.flush_every_n,
-        Duration::from_secs(10),
-    );
+    let to_replica_sink = to_replica_port.into_sink();
+    // let to_replica_unbatched_sink = to_replica_port.into_sink();
+    // let to_replica_sink = batched_sink(
+    //     to_replica_unbatched_sink,
+    //     cfg.flush_every_n,
+    //     Duration::from_secs(10),
+    // );
 
     let from_replica_source = ports
         .remove("receive_from$replicas$0")

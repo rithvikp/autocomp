@@ -24,9 +24,9 @@ class SmokeVotingSuite(VotingSuite):
                 num_replicas=replicas,
                 jvm_heap_size='100m',
                 duration=datetime.timedelta(seconds=10),
-                timeout=datetime.timedelta(seconds=120),
+                timeout=datetime.timedelta(seconds=15),
                 warmup_duration=datetime.timedelta(seconds=5),
-                warmup_timeout=datetime.timedelta(seconds=20),
+                warmup_timeout=datetime.timedelta(seconds=7),
                 warmup_sleep=datetime.timedelta(seconds=1),
                 # Need a large lag in order for Prometheus to initialize correctly
                 client_lag=datetime.timedelta(seconds=10),
