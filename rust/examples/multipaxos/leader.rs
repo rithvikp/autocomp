@@ -69,7 +69,7 @@ fn deserialize(msg: BytesMut, slot: &mut u32) -> Option<(Vec<u8>,u32,)> {
 }
 
 fn serialize(payload: Vec<u8>, slot: u32) -> bytes::Bytes {
-    // println!("Serializing slot {}", slot);
+    println!("Serializing slot {}", slot);
     let command = multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload)).unwrap();
 
     let out = multipaxos_proto::ReplicaInbound {
@@ -340,7 +340,9 @@ CountMatchingP2bs(payload, slot, count(acceptorID), i, num) :- p2b(acceptorID, p
 commit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), quorum(size), (c >= size)
 allCommit(slot) :- CountMatchingP2bs(payload, slot, c, i, num), fullQuorum(c)
 MaxCommits(max(slot)) :- commit(payload, slot)
-clientOut@r(payload, slot) :~ commit(payload, slot), replicas(r)
+clientOut@r(payload, slot) :~ commit(payload, slot), replicas(r), !notFirstTimeCommit(slot)
+
+notFirstTimeCommit(slot) :+ commit(payload, slot)
 
 totalCommitted(new) :+ !totalCommitted(prev), MaxCommits(new)
 totalCommitted(prev) :+ totalCommitted(prev), !MaxCommits(new)
