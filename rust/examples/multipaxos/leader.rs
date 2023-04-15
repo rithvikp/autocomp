@@ -88,25 +88,6 @@ fn serialize(payload: Vec<u8>, slot: u32) -> bytes::Bytes {
 }
 
 pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
-    // Client setup
-    let client_recv = ports
-        .remove("receive_from$clients$0")
-        .unwrap()
-        .connect::<ConnectedTagged<ConnectedBidi>>()
-        .await
-        .into_source();
-
-    // Replica setup
-    let replica_port = ports
-        .remove("send_to$replicas$0")
-        .unwrap()
-        .connect::<ConnectedDemux<ConnectedBidi>>()
-        .await;
-
-    let replicas = replica_port.keys.clone();
-    println!("replicas: {:?}", replicas);
-    let replica_send = replica_port.into_sink();
-
     // General setup
     let p1a_port = ports
         .remove("send_to$acceptors$0")
@@ -170,6 +151,24 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let i_am_leader_check_timeout = periodic(cfg.i_am_leader_check_timeout.unwrap());
 
     // let p2a_sink = batched_sink(p2a_unbatched_sink, flush_every_n, Duration::from_secs(10));
+
+    // Client setup
+    let client_recv = ports
+        .remove("receive_from$clients$0")
+        .unwrap()
+        .connect::<ConnectedTagged<ConnectedBidi>>()
+        .await
+        .into_source();
+
+    // Replica setup
+    let replica_port = ports
+        .remove("send_to$replicas$0")
+        .unwrap()
+        .connect::<ConnectedDemux<ConnectedBidi>>()
+        .await;
+
+    let replicas = replica_port.keys.clone();
+    let replica_send = replica_port.into_sink();
 
     let df = datalog!(
         r#"
@@ -261,7 +260,7 @@ p2aOut(a, i, no, slot, i, num) :- FilledHoles(no, slot), id(i), ballot(num), acc
 // throughputOut(num) :- totalCommitted(num), p1aTimeout(), IsLeader()
 // nextSlotOut(num) :- nextSlot(num), p1aTimeout(), IsLeader()
 // acceptorThroughputOut(acceptorID, num) :- totalAcceptorSentP2bs(acceptorID, num), p1aTimeout(), IsLeader()
-// clientStdout(payload, slot) :- commit(payload, slot)
+clientStdout(payload, slot) :- commit(payload, slot)
 
 ######################## stable leader election
 RelevantP1bs(acceptorID, logSize) :- p1b(acceptorID, logSize, i, num, maxID, maxNum), id(i), ballot(num)
@@ -323,7 +322,7 @@ nextSlot(s+1) :+ IsLeader(), MaxProposedSlot(s), !nextSlot(s2)
 
 ######################## send p2as
 # assign a slot
-ChosenPayload(choose(payload)) :- clientIn(payload), nextSlot(s), IsLeader() # drop all payloads that we can't handle in this tick by not persisting clientIn
+ChosenPayload(choose(payload)) :- payloads(payload), nextSlot(s), IsLeader() # drop all payloads that we can't handle in this tick by not persisting clientIn
 p2a@a(i, payload, slot, i, num) :~ ChosenPayload(payload), nextSlot(slot), id(i), ballot(num), acceptors(a)
 # Increment the slot if a payload was chosen
 nextSlot(s+1) :+ ChosenPayload(payload), nextSlot(s)

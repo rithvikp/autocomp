@@ -67,9 +67,9 @@ def main(args) -> None:
                     leader_options = LeaderOptions(
                         flush_every_n = leader_flush_every_n,
                         p1a_node_0_timeout = 300,
-                        p1a_other_nodes_timeout = 1000,
-                        i_am_leader_resend_timeout = 500,
-                        i_am_leader_check_timeout = 1000,
+                        p1a_other_nodes_timeout = 10000,
+                        i_am_leader_resend_timeout = 1000,
+                        i_am_leader_check_timeout = 3000,
                     ),
                     replica_options = ReplicaOptions(
                         log_grow_size = 5000,
