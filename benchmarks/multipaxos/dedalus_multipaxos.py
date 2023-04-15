@@ -193,12 +193,9 @@ class DedalusMultiPaxosNet:
                 'host': e.host.ip(),
                 'port': e.port
             } for e in self.placement().replicas],
-            'proxy_replica_address': [{
-                'host': e.host.ip(),
-                'port': e.port
-            } for e in self.placement().replicas],
+            'proxy_replica_address': [],
             'flexible': False,
-            'distribution_scheme': DistributionScheme.COLOCATED
+            'distribution_scheme': DistributionScheme.HASH,
         }
 
 
