@@ -29,7 +29,6 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
 
-    let peers = p1b.keys.clone();
     let p1b_sink = p1b.into_sink();
 
     let p1b_log_sink = ports
@@ -54,7 +53,6 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
         .into_sink();
 
     let my_id: Vec<u32> = vec![cfg.acceptor_index.unwrap()];
-    println!("proposers: {:?}", peers);
 
     let df = datalog!(
         r#"

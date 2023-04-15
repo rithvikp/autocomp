@@ -37,7 +37,7 @@ def main(args) -> None:
                     warmup_sleep = datetime.timedelta(seconds=5),
                     duration = datetime.timedelta(seconds=15),
                     timeout = datetime.timedelta(seconds=20),
-                    client_lag = datetime.timedelta(seconds=5),
+                    client_lag = datetime.timedelta(seconds=10),
                     state_machine = 'KeyValueStore',
                     predetermined_read_fraction = -1,
                     workload_label = 'write_only',
@@ -66,10 +66,10 @@ def main(args) -> None:
                         datetime.timedelta(milliseconds=200),
                     leader_options = LeaderOptions(
                         flush_every_n = leader_flush_every_n,
-                        p1a_node_0_timeout = 300,
-                        p1a_other_nodes_timeout = 10000,
-                        i_am_leader_resend_timeout = 1000,
-                        i_am_leader_check_timeout = 3000,
+                        p1a_node_0_timeout = 500,
+                        p1a_other_nodes_timeout = 60000,
+                        i_am_leader_resend_timeout = 2000,
+                        i_am_leader_check_timeout = 4000,
                     ),
                     replica_options = ReplicaOptions(
                         log_grow_size = 5000,
@@ -107,9 +107,9 @@ def main(args) -> None:
                 for num_acceptors in [3]
                 for num_replicas in [3]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
-                    (1, 1, 1),
+                    # (1, 1, 1),
                     # (1, 50, 10),
-                    # (1, 100, 10),
+                    (1, 100, 10),
                     # (2, 100, 10),
                     # (3, 100, 10),
                     # (4, 100, 10),

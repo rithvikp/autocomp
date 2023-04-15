@@ -41,10 +41,12 @@ fn serialize_noop() -> (Vec<u8>,) {
     return (buf,);
 }
 
-fn deserialize(msg: BytesMut) -> Option<(Vec<u8>,)> {
+fn deserialize(msg: BytesMut, slot: &mut u32) -> Option<(Vec<u8>,u32,)> {
     if msg.len() == 0 {
         return None;
     }
+    *slot += 1;
+    // println!("slot {}", slot);
     let s = multipaxos_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
 
     match s.request.unwrap() {
@@ -60,13 +62,14 @@ fn deserialize(msg: BytesMut) -> Option<(Vec<u8>,)> {
             };
             let mut buf = Vec::new();
             out.encode(&mut buf).unwrap();
-            return Some((buf,));
+            return Some((buf, *slot,));
         }
         _ => panic!("Unexpected message from the client"),
     }
 }
 
 fn serialize(payload: Vec<u8>, slot: u32) -> bytes::Bytes {
+    // println!("Serializing slot {}", slot);
     let command = multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload)).unwrap();
 
     let out = multipaxos_proto::ReplicaInbound {
@@ -133,7 +136,6 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await;
 
     let proposers = i_am_leader_port.keys.clone();
-    println!("proposers: {:?}", proposers);
 
     let i_am_leader_sink = i_am_leader_port.into_sink();
 
@@ -170,6 +172,8 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let replicas = replica_port.keys.clone();
     let replica_send = replica_port.into_sink();
 
+    let mut slot = 0;
+
     let df = datalog!(
         r#"
 ######################## relation definitions
@@ -180,14 +184,14 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 .input replicas `repeat_iter(replicas.clone()) -> map(|p| (p,))`
 .input quorum `repeat_iter([(f+1,),])`
 .input fullQuorum `repeat_iter([(2*f+1,),])`
-.input noop `repeat_iter([serialize_noop(),])` // FIXME: Serialize a noop
+.input noop `repeat_iter([serialize_noop(),])`
 
 # Debug
 .output p1aOut `for_each(|(a,pid,id,num):(u32,u32,u32,u32,)| println!("proposer {:?} sent p1a to {:?}: [{:?},{:?},{:?}]", pid, a, pid, id, num))`
 .output p1bOut `for_each(|(pid,a,log_size,id,num,max_id,max_num):(u32,u32,u32,u32,u32,u32,u32,)| println!("proposer {:?} received p1b: [{:?},{:?},{:?},{:?},{:?},{:?}]", pid, a, log_size, id, num, max_id, max_num))`
 .output p1bLogOut `for_each(|(pid,a,payload,slot,payload_id,payload_num,id,num):(u32,u32,Vec<u8>,u32,u32,u32,u32,u32,)| println!("proposer {:?} received p1bLog: [{:?},{:?},{:?},{:?},{:?},{:?},{:?}]", pid, a, payload, slot, payload_id, payload_num, id, num))`
 .output p2aOut `for_each(|(a,pid,payload,slot,id,num):(u32,u32,Vec<u8>,u32,u32,u32,)| println!("proposer {:?} sent p2a to {:?}: [{:?},{:?},{:?},{:?},{:?}]", pid, a, pid, payload, slot, id, num))`
-.output p2bOut `for_each(|(pid,a,payload,slot,id,num,max_id,max_num):(u32,u32,Vec<u8>,u32,u32,u32,u32,u32,)| println!("proposer {:?} received p2b: [{:?},{:?},{:?},{:?},{:?},{:?},{:?}]", pid, a, payload, slot, id, num, max_id, max_num))`
+.output p2bOut `for_each(|(pid,a,_,slot,id,num,max_id,max_num):(u32,u32,Vec<u8>,u32,u32,u32,u32,u32,)| println!("proposer {:?} received p2b: [{:?},{:?},{:?},{:?},{:?},{:?}]", pid, a, slot, id, num, max_id, max_num))`
 .output iAmLeaderSendOut `for_each(|(dest,pid,num):(u32,u32,u32,)| println!("proposer {:?} sent iAmLeader to {:?}: [{:?},{:?}]", pid, dest, pid, num))`
 .output iAmLeaderReceiveOut `for_each(|(my_id,pid,num):(u32,u32,u32,)| println!("proposer {:?} received iAmLeader: [{:?},{:?}]", my_id, pid, num))`
 .output throughputOut `for_each(|(num,):(u32,)| println!("{:?}", num))`
@@ -199,7 +203,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
 # IDB
 // .input clientIn `repeat_iter_external(vec![()]) -> map(|_| (context.current_tick() as u32,))`
-.async clientIn `null::<(Vec<u8>,)>()` `source_stream(client_recv) -> filter_map(|x| (deserialize(x.unwrap().1)))`
+.async clientIn `null::<(Vec<u8>,u32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1, &mut slot)))`
 // .input clientIn `repeat_iter_external(vec![()]) -> flat_map(|_| (0..3).map(|d| ((context.current_tick() * 3 + d) as u32,)))`
 .output clientStdout `for_each(|(_,slot):(Vec<u8>,u32)| println!("committed {:?}", slot))`
 .async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot))) -> dest_sink(replica_send)` `null::<(Vec<u8>, u32,)>()`
@@ -239,8 +243,8 @@ receivedBallots(i, n) :+ receivedBallots(i, n)
 // .persist receivedBallots
 iAmLeader(i, n) :- iAmLeaderU(i, n)
 iAmLeader(i, n) :+ iAmLeader(i, n), !iAmLeaderCheckTimeout() # clear iAmLeader periodically (like LRU clocks)
-payloads(p) :- clientIn(p)
-payloads(p) :+ payloads(p), !ChosenPayload(p)
+// payloads(p) :- clientIn(p)
+// payloads(p) :+ payloads(p), !ChosenPayload(p)
 
 # Initialize
 ballot(zero) :- startBallot(zero)
@@ -260,7 +264,7 @@ p2aOut(a, i, no, slot, i, num) :- FilledHoles(no, slot), id(i), ballot(num), acc
 // throughputOut(num) :- totalCommitted(num), p1aTimeout(), IsLeader()
 // nextSlotOut(num) :- nextSlot(num), p1aTimeout(), IsLeader()
 // acceptorThroughputOut(acceptorID, num) :- totalAcceptorSentP2bs(acceptorID, num), p1aTimeout(), IsLeader()
-clientStdout(payload, slot) :- commit(payload, slot)
+// clientStdout(payload, slot) :- commit(payload, slot)
 
 ######################## stable leader election
 RelevantP1bs(acceptorID, logSize) :- p1b(acceptorID, logSize, i, num, maxID, maxNum), id(i), ballot(num)
@@ -322,12 +326,13 @@ nextSlot(s+1) :+ IsLeader(), MaxProposedSlot(s), !nextSlot(s2)
 
 ######################## send p2as
 # assign a slot
-ChosenPayload(choose(payload)) :- payloads(payload), nextSlot(s), IsLeader() # drop all payloads that we can't handle in this tick by not persisting clientIn
-p2a@a(i, payload, slot, i, num) :~ ChosenPayload(payload), nextSlot(slot), id(i), ballot(num), acceptors(a)
+// ChosenPayload(choose(payload)) :- payloads(payload), nextSlot(s), IsLeader() # drop all payloads that we can't handle in this tick by not persisting clientIn
+// p2a@a(i, payload, slot, i, num) :~ ChosenPayload(payload), nextSlot(slot), id(i), ballot(num), acceptors(a)
+p2a@a(i, payload, slot, i, num) :~ clientIn(payload, slot), id(i), ballot(num), acceptors(a)
 # Increment the slot if a payload was chosen
-nextSlot(s+1) :+ ChosenPayload(payload), nextSlot(s)
+// nextSlot(s+1) :+ ChosenPayload(payload), nextSlot(s)
 # Don't increment the slot if no payload was chosen, but we are still the leader
-nextSlot(s) :+ !ChosenPayload(payload), nextSlot(s), IsLeader()
+// nextSlot(s) :+ !ChosenPayload(payload), nextSlot(s), IsLeader()
 ######################## end send p2as
 
 ######################## process p2bs
