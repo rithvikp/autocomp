@@ -12,7 +12,7 @@ use std::collections::HashMap;
 #[derive(clap::Args, Debug)]
 pub struct AcceptorArgs {
     #[clap(long = "acceptor.index")]
-    index: Option<u32>,
+    acceptor_index: Option<u32>,
 }
 
 pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
@@ -24,7 +24,7 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
         .into_source();
 
     let p1b = ports
-        .remove("send_to_leaders$0")
+        .remove("send_to$leaders$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
@@ -33,33 +33,32 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
     let p1b_sink = p1b.into_sink();
 
     let p1b_log_sink = ports
-        .remove("send_to_leaders$0")
+        .remove("send_to$leaders$1")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await
         .into_sink();
 
     let p2a_source = ports
-        .remove("receive_from_leaders$1")
+        .remove("receive_from$leaders$1")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let p2b_sink = ports
-        .remove("send_to_leaders$2")
+        .remove("send_to$leaders$2")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await
         .into_sink();
 
-    let my_id: Vec<u32> = vec![cfg.index.unwrap()];
-    println!("my_id: {:?}", my_id);
+    let my_id: Vec<u32> = vec![cfg.acceptor_index.unwrap()];
     println!("proposers: {:?}", peers);
 
     let df = datalog!(
         r#"
-        ######################## relation definitions
+######################## relation definitions
 # EDB
 .input id `repeat_iter(my_id.clone()) -> map(|p| (p,))`
 

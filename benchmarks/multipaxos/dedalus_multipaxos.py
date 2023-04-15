@@ -319,6 +319,8 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                                  recover_log_entry_max_period.total_seconds()),
                     '--options.unsafeDontRecover',
                     str(input.replica_options.unsafe_dont_recover),
+                    '--receive_addrs',
+                    ','.join([str(x) for x in receive_endpoints[i]]),
                 ],
             )
             if input.profiled:
@@ -456,6 +458,8 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                     f'{input.client_options.flush_writes_every_n}',
                     '--options.flushReadsEveryN',
                     f'{input.client_options.flush_reads_every_n}',
+                    '--receive_addrs',
+                    ','.join([x.host.ip()+":"+str(x.port) for x in net.placement().leaders]),
                 ])
             if input.profiled:
                 p = perf_util.JavaPerfProc(bench, client.host, p, f'client_{i}')

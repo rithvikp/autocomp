@@ -41,7 +41,10 @@ fn serialize_noop() -> (Vec<u8>,) {
     return (buf,);
 }
 
-fn deserialize(msg: BytesMut) -> (Vec<u8>,) {
+fn deserialize(msg: BytesMut) -> Option<(Vec<u8>,)> {
+    if msg.len() == 0 {
+        return None;
+    }
     let s = multipaxos_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
 
     match s.request.unwrap() {
@@ -57,7 +60,7 @@ fn deserialize(msg: BytesMut) -> (Vec<u8>,) {
             };
             let mut buf = Vec::new();
             out.encode(&mut buf).unwrap();
-            return (buf,);
+            return Some((buf,));
         }
         _ => panic!("Unexpected message from the client"),
     }
@@ -74,6 +77,7 @@ fn serialize(payload: Vec<u8>, slot: u32) -> bytes::Bytes {
             },
         )),
     };
+    println!("serialize: {:?}", out.request.as_ref().unwrap());
     // let s = frankenpaxos::multipaxos_proto::ClientReply {
     //     id: v.0,
     //     accepted: true,
@@ -93,12 +97,15 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .into_source();
 
     // Replica setup
-    let replica_send = ports
+    let replica_port = ports
         .remove("send_to$replicas$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
-        .await
-        .into_sink();
+        .await;
+
+    let replicas = replica_port.keys.clone();
+    println!("replicas: {:?}", replicas);
+    let replica_send = replica_port.into_sink();
 
     // General setup
     let p1a_port = ports
@@ -108,7 +115,6 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await;
 
     let acceptors = p1a_port.keys.clone();
-    println!("acceptors: {:?}", acceptors);
     let p1a_sink = p1a_port.into_sink();
 
     let p1b_source = ports
@@ -153,7 +159,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let i_am_leader_source = ports
         .remove("receive_from$leaders$0")
         .unwrap()
-        .connect::<ConnectedBidi>()
+        .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
@@ -172,6 +178,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 .input id `repeat_iter([(my_id,),])`
 .input acceptors `repeat_iter(acceptors.clone()) -> map(|p| (p,))`
 .input proposers `repeat_iter(proposers.clone()) -> map(|p| (p,))`
+.input replicas `repeat_iter(replicas.clone()) -> map(|p| (p,))`
 .input quorum `repeat_iter([(f+1,),])`
 .input fullQuorum `repeat_iter([(2*f+1,),])`
 .input noop `repeat_iter([serialize_noop(),])` // FIXME: Serialize a noop
@@ -193,10 +200,10 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
 # IDB
 // .input clientIn `repeat_iter_external(vec![()]) -> map(|_| (context.current_tick() as u32,))`
-.async clientIn `null::<(Vec<u8>,)>()` `source_stream(client_recv) -> map(|x| (deserialize(x.unwrap().1)))`
+.async clientIn `null::<(Vec<u8>,)>()` `source_stream(client_recv) -> filter_map(|x| (deserialize(x.unwrap().1)))`
 // .input clientIn `repeat_iter_external(vec![()]) -> flat_map(|_| (0..3).map(|d| ((context.current_tick() * 3 + d) as u32,)))`
-// .output clientOut `for_each(|(payload,slot):(Vec<u8>,u32)| println!("committed {:?}: {:?}", slot, payload))`
-.async clientOut `map(|(node_id, payload, slot)| (node_id, serialize(payload, slot))) -> dest_sink(replica_send)` `null::<(u32, Vec<u8>, u32,)>()`
+.output clientStdout `for_each(|(payload,slot):(Vec<u8>,u32)| println!("committed {:?}", slot))`
+.async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot))) -> dest_sink(replica_send)` `null::<(Vec<u8>, u32,)>()`
 
 .input startBallot `repeat_iter([(0 as u32,),])`
 .input startSlot `repeat_iter([(0 as u32,),])`
@@ -217,7 +224,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 .input iAmLeaderCheckTimeout `source_stream(i_am_leader_check_timeout) -> map(|_| () )` # periodic timer to check if the leader has sent a heartbeat
 // .input currTime `repeat_iter(vec![()]) -> map(|_| (SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32,))` # wall-clock time
 # iAmLeader: ballotID, ballotNum. Note: this is both a source and a sink
-.async iAmLeaderU `map(|(node_id, v):(u32,(u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(i_am_leader_sink)` `source_stream(i_am_leader_source) -> map(|v: Result<BytesMut, _>| deserialize_from_bytes::<(u32,u32,)>(v.unwrap()).unwrap())`
+.async iAmLeaderU `map(|(node_id, v):(u32,(u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(i_am_leader_sink)` `source_stream(i_am_leader_source) -> map(|v: Result<(u32,BytesMut), _>| deserialize_from_bytes::<(u32,u32,)>(v.unwrap().1).unwrap())`
 ######################## end relation definitions
 
 # inputs that are persisted must have an alias. Format: inputU = unpersisted input.
@@ -327,8 +334,9 @@ nextSlot(s) :+ !ChosenPayload(payload), nextSlot(s), IsLeader()
 CountMatchingP2bs(payload, slot, count(acceptorID), i, num) :- p2b(acceptorID, payload, slot, i, num, payloadBallotID, payloadBallotNum)
 commit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), quorum(size), (c >= size)
 allCommit(slot) :- CountMatchingP2bs(payload, slot, c, i, num), fullQuorum(c)
-// clientOut(payload, slot) :- commit(payload, slot)
+clientStdout(payload, slot) :- commit(payload, slot)
 MaxCommits(max(slot)) :- commit(payload, slot)
+clientOut@r(payload, slot) :~ commit(payload, slot), replicas(r)
 
 totalCommitted(new) :+ !totalCommitted(prev), MaxCommits(new)
 totalCommitted(prev) :+ totalCommitted(prev), !MaxCommits(new)

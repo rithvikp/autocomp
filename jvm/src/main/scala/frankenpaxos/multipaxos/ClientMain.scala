@@ -78,7 +78,8 @@ object ClientMain extends App {
       writeWorkload: ReadWriteWorkload =
         new UniformReadWriteWorkload(1, 1, 1, 0),
       // Options.
-      options: ClientOptions = ClientOptions.default
+      options: ClientOptions = ClientOptions.default,
+      receiveAddrs: String = ""
   )
 
   implicit class OptionsWrapper[A](o: scopt.OptionDef[A, Flags]) {
@@ -101,6 +102,8 @@ object ClientMain extends App {
     opt[Int]("prometheus_port")
       .action((x, f) => f.copy(prometheusPort = x))
       .text(s"Prometheus port; -1 to disable")
+
+    opt[String]("receive_addrs").action((x, f) => f.copy(receiveAddrs = x))
 
     // Benchmark flags.
     opt[Int]("measurement_group_size")
@@ -184,6 +187,16 @@ object ClientMain extends App {
     options = flags.options,
     metrics = new ClientMetrics(PrometheusCollectors)
   )
+
+  val receiveChans: Unit = for (addr <- flags.receiveAddrs.split(",")) {
+    if (addr != "") {
+      addr.split(":") match {
+        case Array(host, port) =>
+          client.send(NettyTcpAddress(new InetSocketAddress(host, port.toInt)), Array[Byte]())
+        case default => throw new IllegalArgumentException(s"Invalid receive address $addr")
+      }
+    }
+  }
 
   // Functions to warmup and run the clients. When warming up, we don't record
   // any stats.

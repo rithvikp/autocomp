@@ -452,6 +452,9 @@ def _wrangle_recorder_data(bench: BenchmarkDirectory,
         bench.log('Aggregate recorder data compressed.')
 
     # Drop prefix of data.
+    if len(df.index) == 0:
+        raise ValueError('No data was found. There likely is an error in the benchmark.')
+
     start_time = df.index[0]
     new_start_time = (start_time +
                       pd.DateOffset(seconds=drop_prefix.total_seconds()))

@@ -306,7 +306,7 @@ class AutoVotingSuite(benchmark.Suite[Input, Output]):
                 '--log_level',
                 inp.log_level,
                 '--receive_addrs',
-                ','.join([str(x) for x in receive_endpoints]),
+                ','.join([str(x) for x in receive_endpoints[0]]),
             ])
         if inp.profiled:
             client_proc = perf_util.JavaPerfProc(
