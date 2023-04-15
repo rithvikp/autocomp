@@ -59,7 +59,8 @@ class ReplicaOptions(NamedTuple):
 
 class LeaderOptions(NamedTuple):
     flush_every_n: int
-    p1a_timeout: int
+    p1a_node_0_timeout: int
+    p1a_other_nodes_timeout: int
     i_am_leader_resend_timeout: int
     i_am_leader_check_timeout: int
 
@@ -233,12 +234,13 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                 'leader',
                 '--leader.flush-every-n',
                 str(input.leader_options.flush_every_n),
+                # Vary timeouts to reduce contention
                 '--leader.p1a-timeout',
-                str(input.leader_options.p1a_timeout),
+                str(input.leader_options.p1a_timeout + i * 50),
                 '--leader.i-am-leader-resend-timeout',
                 str(input.leader_options.i_am_leader_resend_timeout),
                 '--leader.i-am-leader-check-timeout',
-                str(input.leader_options.i_am_leader_check_timeout),
+                str(input.leader_options.i_am_leader_check_timeout + i * 500),
                 '--leader.index',
                 str(i),
                 '--leader.f',

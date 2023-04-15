@@ -36,8 +36,8 @@ pub async fn run(cfg: ParticipantArgs, mut ports: HashMap<String, ServerOrBound>
 
     let df = datalog!(
         r#"
-.input myID `repeat_iter_external(my_id.clone()) -> map(|p| (p,))`
-.input leader `repeat_iter_external(peers.clone()) -> map(|p| (p,))`
+.input myID `repeat_iter(my_id.clone()) -> map(|p| (p,))`
+.input leader `repeat_iter(peers.clone()) -> map(|p| (p,))`
 .async voteToReplica `null::<(i64,)>()` `source_stream(to_replica_source) -> map(|x| deserialize_from_bytes::<(i64,)>(x.unwrap().1).unwrap())`
 .async voteFromReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(v))) -> dest_sink(from_replica_sink)` `null::<(u32,i64,)>()`
 

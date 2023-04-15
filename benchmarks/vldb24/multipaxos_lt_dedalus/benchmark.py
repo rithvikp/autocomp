@@ -66,9 +66,10 @@ def main(args) -> None:
                         datetime.timedelta(milliseconds=200),
                     leader_options = LeaderOptions(
                         flush_every_n = leader_flush_every_n,
-                        p1a_timeout = 1,
-                        i_am_leader_resend_timeout = 1,
-                        i_am_leader_check_timeout = 1,
+                        p1a_node_0_timeout = 300,
+                        p1a_other_nodes_timeout = 1000,
+                        i_am_leader_resend_timeout = 500,
+                        i_am_leader_check_timeout = 1000,
                     ),
                     replica_options = ReplicaOptions(
                         log_grow_size = 5000,
@@ -119,7 +120,7 @@ def main(args) -> None:
                     # (9, 100, 10),
                     # (10, 100, 10),
                 ]
-            ] * 5
+            ] #* 5
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
@@ -129,7 +130,7 @@ def main(args) -> None:
                 'num_clients_per_proc': input.num_clients_per_proc,
                 'num_acceptors': input.num_acceptors,
                 'num_replicas': input.num_replicas,
-                'leader_flush_every_n': input.leader_flush_every_n,
+                'leader_flush_every_n': input.leader_options.flush_every_n,
                 'write.latency.median_ms': f'{output.write_output.latency.median_ms:.6}',
                 'write.start_throughput_1s.p90': f'{output.write_output.start_throughput_1s.p90:.8}',
             })

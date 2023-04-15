@@ -202,7 +202,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 // .input clientIn `repeat_iter_external(vec![()]) -> map(|_| (context.current_tick() as u32,))`
 .async clientIn `null::<(Vec<u8>,)>()` `source_stream(client_recv) -> filter_map(|x| (deserialize(x.unwrap().1)))`
 // .input clientIn `repeat_iter_external(vec![()]) -> flat_map(|_| (0..3).map(|d| ((context.current_tick() * 3 + d) as u32,)))`
-.output clientStdout `for_each(|(payload,slot):(Vec<u8>,u32)| println!("committed {:?}", slot))`
+.output clientStdout `for_each(|(_,slot):(Vec<u8>,u32)| println!("committed {:?}", slot))`
 .async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot))) -> dest_sink(replica_send)` `null::<(Vec<u8>, u32,)>()`
 
 .input startBallot `repeat_iter([(0 as u32,),])`
@@ -251,16 +251,17 @@ p1aOut(a, i, i, num) :- id(i), NewBallot(num), p1aTimeout(), LeaderExpired(), ac
 p1aOut(a, i, i, num) :- id(i), ballot(num), !NewBallot(newNum), p1aTimeout(), LeaderExpired(), acceptors(a)
 p1bOut(pid, a, logSize, id, num, maxID, maxNum) :- id(pid), p1bU(a, logSize, id, num, maxID, maxNum)
 p1bLogOut(pid, a, payload, slot, payloadBallotID, payloadBallotNum, id, num) :- id(pid), p1bLogU(a, payload, slot, payloadBallotID, payloadBallotNum, id, num)
-p2aOut(a, i, payload, slot, i, num) :- ResentLog(payload, slot), id(i), ballot(num), acceptors(a)
+// p2aOut(a, i, payload, slot, i, num) :- ResentLog(payload, slot), id(i), ballot(num), acceptors(a)
 p2aOut(a, i, no, slot, i, num) :- FilledHoles(no, slot), id(i), ballot(num), acceptors(a) # Weird bug where if this line is commented out, id has an error?
-p2aOut(a, i, payload, slot, i, num) :- ChosenPayload(payload), nextSlot(slot), id(i), ballot(num), acceptors(a)
+// p2aOut(a, i, payload, slot, i, num) :- ChosenPayload(payload), nextSlot(slot), id(i), ballot(num), acceptors(a)
 // p2bOut(pid, a, payload, slot, id, num, maxID, maxNum) :- id(pid), p2bU(a, payload, slot, id, num, maxID, maxNum)
 // iAmLeaderSendOut(pid, i, num) :- id(i), ballot(num), IsLeader(), proposers(pid), iAmLeaderResendTimeout(), !id(pid)
 // iAmLeaderReceiveOut(pid, i, num) :- id(pid), iAmLeaderU(i, num)
 // LeaderExpiredOut(pid) :- id(pid), LeaderExpired()
 // throughputOut(num) :- totalCommitted(num), p1aTimeout(), IsLeader()
-nextSlotOut(num) :- nextSlot(num), p1aTimeout(), IsLeader()
+// nextSlotOut(num) :- nextSlot(num), p1aTimeout(), IsLeader()
 // acceptorThroughputOut(acceptorID, num) :- totalAcceptorSentP2bs(acceptorID, num), p1aTimeout(), IsLeader()
+// clientStdout(payload, slot) :- commit(payload, slot)
 
 ######################## stable leader election
 RelevantP1bs(acceptorID, logSize) :- p1b(acceptorID, logSize, i, num, maxID, maxNum), id(i), ballot(num)
@@ -334,7 +335,6 @@ nextSlot(s) :+ !ChosenPayload(payload), nextSlot(s), IsLeader()
 CountMatchingP2bs(payload, slot, count(acceptorID), i, num) :- p2b(acceptorID, payload, slot, i, num, payloadBallotID, payloadBallotNum)
 commit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), quorum(size), (c >= size)
 allCommit(slot) :- CountMatchingP2bs(payload, slot, c, i, num), fullQuorum(c)
-// clientStdout(payload, slot) :- commit(payload, slot)
 MaxCommits(max(slot)) :- commit(payload, slot)
 clientOut@r(payload, slot) :~ commit(payload, slot), replicas(r)
 
@@ -355,6 +355,6 @@ totalCommitted(prev) :+ totalCommitted(prev), MaxCommits(new), (prev >= new)
 }
 
 fn periodic(timeout: u32) -> IntervalStream {
-    let start = Instant::now() + Duration::from_secs(timeout.into());
-    IntervalStream::new(interval_at(start, Duration::from_secs(timeout.into())))
+    let start = Instant::now() + Duration::from_millis(timeout.into());
+    IntervalStream::new(interval_at(start, Duration::from_millis(timeout.into())))
 }
