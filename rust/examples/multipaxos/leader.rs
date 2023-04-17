@@ -41,16 +41,20 @@ fn serialize_noop() -> (Vec<u8>,) {
     return (buf,);
 }
 
-fn deserialize(msg: BytesMut, slot: &mut u32) -> Option<(Vec<u8>,u32,)> {
+// fn deserialize(msg: BytesMut, slot: &mut u32) -> Option<(Vec<u8>,u32,)> {
+// Returns: (payload, client_id, msg_id)
+fn deserialize(msg: BytesMut) -> Option<(Vec<u8>,i32,i32)> {
     if msg.len() == 0 {
         return None;
     }
-    *slot += 1;
+    // *slot += 1;
     // println!("slot {}", slot);
     let s = multipaxos_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
 
     match s.request.unwrap() {
         multipaxos_proto::leader_inbound::Request::ClientRequest(r) => {
+            let client_id = r.command.command_id.client_pseudonym;
+            let msg_id = r.command.command_id.client_id;
             let out = multipaxos_proto::CommandBatchOrNoop {
                 value: Some(
                     multipaxos_proto::command_batch_or_noop::Value::CommandBatch(
@@ -62,7 +66,7 @@ fn deserialize(msg: BytesMut, slot: &mut u32) -> Option<(Vec<u8>,u32,)> {
             };
             let mut buf = Vec::new();
             out.encode(&mut buf).unwrap();
-            return Some((buf, *slot,));
+            return Some((buf, client_id, msg_id));
         }
         _ => panic!("Unexpected message from the client"),
     }
@@ -203,7 +207,8 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
 # IDB
 // .input clientIn `repeat_iter_external(vec![()]) -> map(|_| (context.current_tick() as u32,))`
-.async clientIn `null::<(Vec<u8>,u32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1, &mut slot)))`
+// .async clientIn `null::<(Vec<u8>,u32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1, &mut slot)))`
+.async clientIn `null::<(Vec<u8>,i32,i32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1)))`
 // .input clientIn `repeat_iter_external(vec![()]) -> flat_map(|_| (0..3).map(|d| ((context.current_tick() * 3 + d) as u32,)))`
 .output clientStdout `for_each(|(_,slot):(Vec<u8>,u32)| println!("committed {:?}", slot))`
 .async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot))) -> dest_sink(replica_send)` `null::<(Vec<u8>, u32,)>()`
@@ -238,13 +243,13 @@ p1bLog(a, p, s, pi, pn, i, n) :- p1bLogU(a, p, s, pi, pn, i, n)
 p1bLog(a, p, s, pi, pn, i, n) :+ p1bLog(a, p, s, pi, pn, i, n) # drop all p1bLogs if slot s is committed
 // .persist p1bLog
 p2b(a, p, s, i, n, mi, mn) :- p2bU(a, p, s, i, n, mi, mn)
-p2b(a, p, s, i, n, mi, mn) :+ p2b(a, p, s, i, n, mi, mn), !allCommit(s) # drop all p2bs if slot s is committed
+p2b(a, p, s, i, n, mi, mn) :+ p2b(a, p, s, i, n, mi, mn), !allCommit(_, s) # drop all p2bs if slot s is committed
 receivedBallots(i, n) :+ receivedBallots(i, n)
 // .persist receivedBallots
 iAmLeader(i, n) :- iAmLeaderU(i, n)
 iAmLeader(i, n) :+ iAmLeader(i, n), !iAmLeaderCheckTimeout() # clear iAmLeader periodically (like LRU clocks)
-// payloads(p) :- clientIn(p)
-// payloads(p) :+ payloads(p), !ChosenPayload(p)
+payloads(p, clientID, msgID) :- clientIn(p, clientID, msgID)
+payloads(p, clientID, msgID) :+ payloads(p, clientID, msgID), !ChosenPayload(clientID, msgID)
 
 # Initialize
 ballot(zero) :- startBallot(zero)
@@ -327,22 +332,24 @@ nextSlot(s+1) :+ IsLeader(), MaxProposedSlot(s), !nextSlot(s2)
 ######################## send p2as
 # assign a slot
 // ChosenPayload(choose(payload)) :- payloads(payload), nextSlot(s), IsLeader() # drop all payloads that we can't handle in this tick by not persisting clientIn
-// p2a@a(i, payload, slot, i, num) :~ ChosenPayload(payload), nextSlot(slot), id(i), ballot(num), acceptors(a)
-p2a@a(i, payload, slot, i, num) :~ clientIn(payload, slot), id(i), ballot(num), acceptors(a)
+ChosenPayload(choose(clientID), choose(msgID)) :- payloads(payload, clientID, msgID), nextSlot(s), IsLeader()
+p2a@a(i, payload, slot, i, num) :~ payloads(payload, clientID, msgID), ChosenPayload(clientID, msgID), nextSlot(slot), id(i), ballot(num), acceptors(a)
+// p2a@a(i, payload, slot, i, num) :~ clientIn(payload, slot), id(i), ballot(num), acceptors(a)
 # Increment the slot if a payload was chosen
-// nextSlot(s+1) :+ ChosenPayload(payload), nextSlot(s)
+nextSlot(s+1) :+ ChosenPayload(_, _), nextSlot(s)
 # Don't increment the slot if no payload was chosen, but we are still the leader
-// nextSlot(s) :+ !ChosenPayload(payload), nextSlot(s), IsLeader()
+nextSlot(s) :+ !ChosenPayload(_, _), nextSlot(s), IsLeader()
 ######################## end send p2as
 
 ######################## process p2bs
 CountMatchingP2bs(payload, slot, count(acceptorID), i, num) :- p2b(acceptorID, payload, slot, i, num, payloadBallotID, payloadBallotNum)
 commit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), quorum(size), (c >= size)
-allCommit(slot) :- CountMatchingP2bs(payload, slot, c, i, num), fullQuorum(c)
+allCommit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), fullQuorum(c)
 MaxCommits(max(slot)) :- commit(payload, slot)
-clientOut@r(payload, slot) :~ commit(payload, slot), replicas(r), !notFirstTimeCommit(slot)
+// clientOut@r(payload, slot) :~ commit(payload, slot), replicas(r), !notFirstTimeCommit(slot)
+clientOut@r(payload, slot) :~ allCommit(payload, slot), replicas(r)
 
-notFirstTimeCommit(slot) :+ commit(payload, slot)
+// notFirstTimeCommit(slot) :+ commit(payload, slot)
 
 totalCommitted(new) :+ !totalCommitted(prev), MaxCommits(new)
 totalCommitted(prev) :+ totalCommitted(prev), !MaxCommits(new)

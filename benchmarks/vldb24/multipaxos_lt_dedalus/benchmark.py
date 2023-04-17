@@ -66,10 +66,10 @@ def main(args) -> None:
                         datetime.timedelta(milliseconds=200),
                     leader_options = LeaderOptions(
                         flush_every_n = leader_flush_every_n,
-                        p1a_node_0_timeout = 500,
+                        p1a_node_0_timeout = 300,
                         p1a_other_nodes_timeout = 60000,
                         i_am_leader_resend_timeout = 2000,
-                        i_am_leader_check_timeout = 4000,
+                        i_am_leader_check_timeout = 5000,
                     ),
                     replica_options = ReplicaOptions(
                         log_grow_size = 5000,
