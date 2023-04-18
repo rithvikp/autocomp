@@ -9,6 +9,7 @@ from .. import prometheus
 from .. import proto_util
 from .. import util
 from .. import workload
+from .. import provision
 from ..workload import Workload
 from typing import Any, Callable, Collection, Dict, List, NamedTuple, Optional
 import argparse
@@ -56,11 +57,11 @@ Output = benchmark.RecorderOutput
 
 # Networks #####################################################################
 class AutoVotingNet:
-    def __init__(self, inp: Input, endpoints: Dict[str, List[host.PartialEndpoint]]):
+    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider]):
         self._input = inp
         self._endpoints = endpoints
 
-    def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
+    def update(self, endpoints: Dict[str, provision.EndpointProvider]) -> None:
         self._endpoints = endpoints
 
     class Placement(NamedTuple):
@@ -77,12 +78,11 @@ class AutoVotingNet:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
 
         def portify(role: str, n: int) -> List[host.Endpoint]:
-            assert n <= len(self._endpoints[role])
-            return [portify_one(e) for e in self._endpoints[role][:n]]
+            return [portify_one(e) for e in self._endpoints[role].get_range(n)]
         
         return self.Placement(
-            client=portify_one(self._endpoints['clients'][0]),
-            leader=portify_one(self._endpoints['leaders'][0]),
+            client=portify_one(self._endpoints['clients'].get(0)),
+            leader=portify_one(self._endpoints['leaders'].get(0)),
             collectors=portify('collectors', self._input.num_collectors),
             broadcasters=portify('broadcasters', self._input.num_broadcasters),
             replicas=portify('replicas', self._input.num_replica_groups * self._input.num_replica_partitions),
@@ -97,12 +97,11 @@ class AutoVotingNet:
             return e
 
         def portify(role: str, n: int) -> List[host.Endpoint]:
-            assert n <= len(self._endpoints[role])
-            return [portify_one(e) for e in self._endpoints[role][:n]]
+            return [portify_one(e) for e in self._endpoints[role].get_range(n)]
 
         return self.Placement(
-            client=portify_one(self._endpoints['clients'][0]),
-            leader=portify_one(self._endpoints['leaders'][0]),
+            client=portify_one(self._endpoints['clients'].get(0)),
+            leader=portify_one(self._endpoints['leaders'].get(0)),
             collectors=portify('collectors', self._input.num_collectors),
             broadcasters=portify('broadcasters', self._input.num_broadcasters),
             replicas=portify('replicas', self._input.num_replica_groups * self._input.num_replica_partitions),
@@ -200,6 +199,9 @@ class AutoVotingSuite(benchmark.Suite[Input, Output]):
             "broadcasters": ["replicas"],
             "replicas": ["collectors"],
             "collectors": ["clients"],
+        },
+        {
+            "clients": 1,
         })
         net.update(endpoints)
         bench.log("Reconfiguration completed")

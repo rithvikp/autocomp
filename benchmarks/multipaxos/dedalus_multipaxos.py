@@ -9,6 +9,7 @@ from .. import prometheus
 from .. import proto_util
 from .. import read_write_workload
 from .. import util
+from .. import provision
 from typing import Any, Callable, Collection, Dict, List, NamedTuple, Optional
 import argparse
 import csv
@@ -118,8 +119,11 @@ Output = DedalusMultiPaxosOutput
 
 # Networks #####################################################################
 class DedalusMultiPaxosNet:
-    def __init__(self, inp: Input, endpoints: Dict[str, List[host.PartialEndpoint]]):
+    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider]):
         self._input = inp
+        self._endpoints = endpoints
+
+    def update(self, endpoints: Dict[str, provision.EndpointProvider]) -> None:
         self._endpoints = endpoints
 
     class Placement(NamedTuple):
@@ -128,9 +132,6 @@ class DedalusMultiPaxosNet:
         acceptors: List[host.Endpoint]
         replicas: List[host.Endpoint]
 
-    def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
-        self._endpoints = endpoints
-
     def prom_placement(self) -> Placement:
         ports = itertools.count(40001, 100)
 
@@ -138,8 +139,7 @@ class DedalusMultiPaxosNet:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
 
         def portify(role: str, n: int) -> List[host.Endpoint]:
-            assert n <= len(self._endpoints[role]), f"Role {role} does not have enough machines"
-            return [portify_one(e) for e in self._endpoints[role][:n]]
+            return [portify_one(e) for e in self._endpoints[role].get_range(n)]
 
         return self.Placement(
             clients=portify('clients', self._input.num_client_procs),
@@ -157,8 +157,7 @@ class DedalusMultiPaxosNet:
             return e
 
         def portify(role: str, n: int) -> List[host.Endpoint]:
-            assert n <= len(self._endpoints[role]), f"Role {role} does not have enough machines"
-            return [portify_one(e) for e in self._endpoints[role][:n]]
+            return [portify_one(e) for e in self._endpoints[role].get_range(n)]
 
         return self.Placement(
             clients=portify('clients', self._input.num_client_procs),
@@ -257,6 +256,10 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
             "leaders": ["acceptors", "acceptors", "leaders", "replicas"],
             "acceptors": ["leaders", "leaders", "leaders"],
             "replicas": ["clients"],
+        },
+        {
+            "clients": input.num_client_procs,
+            "replicas": input.num_replicas,
         })
         net.update(endpoints)
         bench.log("Reconfiguration completed")

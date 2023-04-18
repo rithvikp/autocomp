@@ -73,7 +73,7 @@ fn deserialize(msg: BytesMut) -> Option<(Vec<u8>,i32,i32)> {
 }
 
 fn serialize(payload: Vec<u8>, slot: u32) -> bytes::Bytes {
-    println!("Serializing slot {}", slot);
+    // println!("Serializing slot {}", slot);
     let command = multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload)).unwrap();
 
     let out = multipaxos_proto::ReplicaInbound {

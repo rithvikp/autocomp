@@ -9,7 +9,7 @@ from .. import prometheus
 from .. import proto_util
 from .. import util
 from .. import workload
-from ..workload import Workload
+from .. import provision
 from typing import Any, Callable, Collection, Dict, List, NamedTuple, Optional
 import argparse
 import csv
@@ -51,11 +51,11 @@ Output = benchmark.RecorderOutput
 
 # Networks #####################################################################
 class EchoNet:
-    def __init__(self, inp: Input, endpoints: Dict[str, List[host.PartialEndpoint]]):
+    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider]):
         self._input = inp
         self._endpoints = endpoints
 
-    def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
+    def update(self, endpoints: Dict[str, provision.EndpointProvider]) -> None:
         self._endpoints = endpoints
 
     class Placement(NamedTuple):
@@ -66,7 +66,7 @@ class EchoNet:
         ports = itertools.count(40001, 100)
 
         def portify_one(role: str, index: int) -> host.Endpoint:
-            e = self._endpoints[role][index]
+            e = self._endpoints[role].get(index)
 
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
 
@@ -84,8 +84,8 @@ class EchoNet:
             return e
 
         return self.Placement(
-            client=portify_one(self._endpoints['clients'][0]),
-            server=portify_one(self._endpoints['servers'][0]),
+            client=portify_one(self._endpoints['clients'].get(0)),
+            server=portify_one(self._endpoints['servers'].get(0)),
         )
 
 
@@ -107,7 +107,7 @@ class EchoSuite(benchmark.Suite[Input, Output]):
             (['--persist-log'] if inp.persist_log else []))
 
         bench.log("Reconfiguring the system for a new benchmark")
-        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["servers"], "servers": ["clients"]})
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["servers"], "servers": ["clients"]}, {"clients": 1, "servers": 1})
         net.update(endpoints)
         bench.log("Reconfiguration completed")
 

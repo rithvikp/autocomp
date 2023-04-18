@@ -23,11 +23,11 @@ Instead of modifying existing experiments, simply add a new one for hydroflow wi
 2. Remove the constructor and the _connect method to the overall benchmark.
 3. Update the net to take in partial endpoints (and have an update method).
 ```
-    def __init__(self, input: Input, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
+    def __init__(self, input: Input, endpoints: Dict[str, provision.EndpointProvider]) -> None:
         self._input = input
         self._endpoints = endpoints
     
-    def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
+    def update(self, endpoints: Dict[str, provision.EndpointProvider]) -> None:
         self._endpoints = endpoints
 ```
 4. Update the placement method to use these endpoints, assigning ports only if necessary.
@@ -37,6 +37,64 @@ Instead of modifying existing experiments, simply add a new one for hydroflow wi
 8. Only keep scala startup code for the client.
 9. Temporarily, update the benchmark to set _args in the constructor and then call the super constructor.
 """
+    
+class EndpointProvider:
+    def __init__(self):
+        self._endpoints_set = None
+        self._endpoints = None
+
+    def _set_endpoints_set(self, endpoints_set: List[List[host.PartialEndpoint]]):
+        self._endpoints_set = endpoints_set
+
+    def _set_endpoints(self, endpoints: List[host.PartialEndpoint]):
+        self._endpoints = endpoints
+
+    def get(self, receiver_index: int, sender: Optional[int] = None) -> host.PartialEndpoint:
+        if sender is None:
+            return self._get_single(receiver_index)
+
+        if sender == -1:
+            sender = 0
+        if self._endpoints_set is not None:
+            return self._endpoints_set[sender][receiver_index]
+        return self._endpoints[receiver_index]
+
+    def _get_single(self, receiver_index: int) -> host.PartialEndpoint:
+        if self._endpoints_set is not None:
+            assert len(self._endpoints_set) == 1
+            return self._endpoints_set[0][receiver_index]
+        return self._endpoints[receiver_index]
+
+    def get_range(self, receiver_end_index: int, sender: Optional[int] = None) -> List[host.PartialEndpoint]:
+        if sender is None:
+            return self._get_range_single(receiver_end_index)
+
+        if sender == -1:
+            sender = 0
+        if self._endpoints_set is not None:
+            assert  receiver_end_index <= len(self._endpoints_set[sender])
+            return self._endpoints_set[sender][0:receiver_end_index]
+        
+        assert receiver_end_index <= len(self._endpoints)
+        return self._endpoints[0:receiver_end_index]
+
+    def _get_range_single(self, receiver_end_index: int) -> List[host.PartialEndpoint]:
+        if self._endpoints_set is not None:
+            assert len(self._endpoints_set) == 1
+            assert receiver_end_index <= len(self._endpoints_set[0])
+            return self._endpoints_set[0][0:receiver_end_index]
+
+        assert receiver_end_index <= len(self._endpoints)
+        return self._endpoints[0:receiver_end_index]
+    
+
+    def __str__(self):
+        if self._endpoints_set is not None:
+            return str(self._endpoints_set)
+        elif self._endpoints is not None:
+            return str(self._endpoints)
+        return "[]"
+
 
 class State:
     def __init__(self, config: Dict[str, Any], spec: Dict[str, Dict[str, int]], args):
@@ -56,7 +114,7 @@ class State:
     def post_benchmark(self):
         pass
 
-    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Tuple[Dict[str, List[host.PartialEndpoint]], List[host.Endpoint]]:
+    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Tuple[Dict[str, EndpointProvider], List[List[host.Endpoint]]]:
         raise NotImplementedError()
 
     def stop(self):
@@ -108,7 +166,6 @@ class ManualState(State):
 
     def cluster_definition(self) -> Dict[str, Dict[str, List[str]]]:
         return cluster_definition_from_ips(self._spec, self._ips)
-    
 
 class HydroState(State):
     def __init__(self, config: Dict[str, Any], spec: Dict[str, Dict[str, int]], args):
@@ -145,10 +202,13 @@ class HydroState(State):
                 for m in machines:
                     self._conn_cache.connect(self._internal_ip(m))
 
-    def hosts(self, f: int) -> Dict[str, List[host.PartialEndpoint]]:
+    def hosts(self, f: int) -> Dict[str, EndpointProvider]:
         hosts = {}
         for role, machines in self._machines[str(f)].items():
-            hosts[role] = [host.PartialEndpoint(self._conn_cache.connect(self._internal_ip(m)), None) for m in machines]
+            endpoints = [host.PartialEndpoint(self._conn_cache.connect(self._internal_ip(m)), None) for m in machines]
+            provider = EndpointProvider()
+            provider._set_endpoints(endpoints)
+            hosts[role] = provider
         return hosts
 
     def _ssh_connect(self, address: str) -> host.Host:
@@ -308,7 +368,7 @@ class HydroState(State):
         send: 'Dict[str, Tuple[str, List[Any]]]'
         receive: 'Dict[str[Tuple[str, List[List[hydro.CustomServicePort]]]]]'
 
-    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Tuple[Dict[str, List[host.PartialEndpoint]], List[List[host.Endpoint]]]:
+    def rebuild(self, f: int, connections: Dict[str, List[str]], custom_service_counts: Dict[str, int]) -> Tuple[Dict[str, EndpointProvider], List[List[host.Endpoint]]]:
         """Given the specified connections, pass them to hydro CLI and deploy all services.
 
         Returns a mapping between every role and a list of endpoints (for Scala clients to communicate
@@ -322,7 +382,7 @@ class HydroState(State):
         for role, spec in self._config["services"].items():
             if spec["type"] != "scala":
                 continue
-            for machine in self._machines[str(f)][role]:
+            for machine in self._machines[str(f)][role][:custom_service_counts[role]]:
                 self._services[role].append(self._deployment.CustomService(machine, []))
 
         # Sending and receiving is with respect to the custom service
@@ -396,32 +456,41 @@ class HydroState(State):
 
         # All services have been deployed so collect the endpoints that need to be returned.
         # The instance variables were populated by self._redeploy_and_start()
-        endpoints: Dict[str, List[host.PartialEndpoint]] = {}
+        endpoints: Dict[str, EndpointProvider] = {}
         for role, spec in self._config["services"].items():
-            endpoints[role] = []
+            # endpoints[role] = 
+            role_endpoints = []
+            provider = EndpointProvider()
             if spec["type"] == "scala":
-                for machine in self._machines[str(f)][role]:
-                    endpoints[role].append(host.PartialEndpoint(
+                for machine in self._machines[str(f)][role][:custom_service_counts[role]]:
+                    role_endpoints.append(host.PartialEndpoint(
                         host=self._conn_cache.connect(self._internal_ip(machine)),
                         port=None,
                     ))
+                provider._set_endpoints(role_endpoints)
             elif spec["type"] == "hydroflow":
                 if role not in self._hydroflow_endpoints:
+                    role_endpoints = []
                     for i in range(len(self._services[role])):
                         machine = self._machines[str(f)][role][i]
-                        endpoints[role].append(host.PartialEndpoint(
+                        role_endpoints.append(host.PartialEndpoint(
                             host=host.FakeHost(self._internal_ip(machine)),
                             port=None,
                         ))
-                    continue
-                endpoints[role] = self._hydroflow_endpoints[role]
+                    provider._set_endpoints(role_endpoints)
+                else:
+                    provider._set_endpoints_set(self._hydroflow_endpoints[role])
             else:
                 raise ValueError(f"Unrecognized service type for role {role}: {spec['type']}")
+            endpoints[role] = provider
 
         assert len(self._hydroflow_receive_endpoints) == 1, "Only one custom service can currently receive from any hydroflow service"
         receive_endpoints = list(self._hydroflow_receive_endpoints.values())[0]
 
-        print("Endpoints:", str(endpoints), "\nExtra endpoints:", str(receive_endpoints))
+        # print("extra endpoints:", receive_endpoints)
+        # print("Endpoints:")
+        # for role, ep in endpoints.items():
+        #     print(role, ep)
 
         return endpoints, receive_endpoints
 
@@ -430,30 +499,32 @@ class HydroState(State):
         """
         await self._deployment.deploy()
         await self._deployment.start()
-        self._hydroflow_endpoints: Dict[str, List[host.PartialEndpoint]] = {}
+        self._hydroflow_endpoints: Dict[str, List[List[host.PartialEndpoint]]] = {}
         self._hydroflow_receive_endpoints: Dict[str, List[List[host.Endpoint]]] = {}
 
         # Gather all the endpoints for scala --> hydroflow connections
         for receiver, sender_ports in self._custom_ports.send.items():
             # Sender is always a custom service and receiver is always a hydroflow service
+            assert receiver not in self._hydroflow_endpoints, (f"Multiple scala roles cannot "+
+                f"currently send to the same hydroflow process: {receiver}")
+            self._hydroflow_endpoints[receiver] = []
             sender = sender_ports[0]
             for port in sender_ports[1]:
                 addrs = (await port.server_port()).json()['Demux']
                 assert len(addrs) == len(self._services[receiver]), (f"The number of "+
                     f"addresses does not match the number of nodes with the role {receiver}.")
-                assert receiver not in self._hydroflow_endpoints, (f"Multiple scala processes cannot "+
-                    f"currently send to the same hydroflow process: {receiver}")
 
-                self._hydroflow_endpoints[receiver] = [None]*len(addrs)
+                endpoints  = [None]*len(addrs)
                 for index, addr in addrs.items():
                     addr = addr["TcpPort"]
                     decomposed_addr = re.match(r"([0-9.]+):([0-9]+)", addr)
                     assert decomposed_addr is not None, f"Could not parse address {addr}"
                     
-                    self._hydroflow_endpoints[receiver][index] = host.PartialEndpoint(
+                    endpoints[index] = host.PartialEndpoint(
                         host.FakeHost(decomposed_addr[1]),
                         int(decomposed_addr[2]),
                     )
+                self._hydroflow_endpoints[receiver].append(endpoints)
 
         # Gather all the endpoints for hydroflow --> scala connections
         # These are back channels on which Scala will not send messages (but hydroflow will)

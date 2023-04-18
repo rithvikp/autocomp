@@ -9,6 +9,7 @@ from .. import prometheus
 from .. import proto_util
 from .. import util
 from .. import workload
+from .. import provision
 from ..workload import Workload
 from typing import Any, Callable, Collection, Dict, List, NamedTuple, Optional
 import argparse
@@ -30,6 +31,7 @@ import yaml
 # Input/Output #################################################################
 class Input(NamedTuple):
     # System-wide parameters. ##################################################
+    num_client_procs: int
     num_clients_per_proc: int
     num_replicas: int
     jvm_heap_size: str
@@ -53,15 +55,15 @@ Output = benchmark.RecorderOutput
 
 # Networks #####################################################################
 class VotingNet:
-    def __init__(self, inp: Input, endpoints: Dict[str, List[host.PartialEndpoint]]):
+    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider]):
         self._input = inp
         self._endpoints = endpoints
 
-    def update(self, endpoints: Dict[str, List[host.PartialEndpoint]]) -> None:
+    def update(self, endpoints: Dict[str, provision.EndpointProvider]) -> None:
         self._endpoints = endpoints
 
     class Placement(NamedTuple):
-        client: host.Endpoint
+        clients: List[host.Endpoint]
         leader: host.Endpoint
         replicas: List[host.Endpoint]
 
@@ -72,16 +74,15 @@ class VotingNet:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
 
         def portify(role: str, n: int) -> List[host.Endpoint]:
-            assert n <= len(self._endpoints[role])
-            return [portify_one(e) for e in self._endpoints[role][:n]]
+            return [portify_one(e) for e in self._endpoints[role].get_range(n, sender=-1)]
         
         return self.Placement(
-            client=portify_one(self._endpoints['clients'][0]),
-            leader=portify_one(self._endpoints['leaders'][0]),
+            clients=portify('clients', self._input.num_client_procs),
+            leader=portify_one(self._endpoints['leaders'].get(0, sender=-1)),
             replicas=portify('replicas', self._input.num_replicas),
         )
 
-    def placement(self) -> Placement:
+    def placement(self, index: int = 0) -> Placement:
         ports = itertools.count(10000, 100)
 
         def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
@@ -90,24 +91,23 @@ class VotingNet:
             return e
 
         def portify(role: str, n: int) -> List[host.Endpoint]:
-            assert n <= len(self._endpoints[role])
-            return [portify_one(e) for e in self._endpoints[role][:n]]
+            return [portify_one(e) for e in self._endpoints[role].get_range(n, sender=index)]
 
         return self.Placement(
-            client=portify_one(self._endpoints['clients'][0]),
-            leader=portify_one(self._endpoints['leaders'][0]),
+            clients=portify('clients', self._input.num_client_procs),
+            leader=portify_one(self._endpoints['leaders'].get(0, sender=index)),
             replicas=portify('replicas', self._input.num_replicas),
         )
 
-    def config(self) -> proto_util.Message:
+    def config(self, index: int = 0) -> proto_util.Message:
         return {
             'replica_address': [{
                 'host': e.host.ip(),
                 'port': e.port,
-            } for e in self.placement().replicas],
+            } for e in self.placement(index = index).replicas],
             'leader_address': {
-                'host': self.placement().leader.host.ip(),
-                'port': self.placement().leader.port,
+                'host': self.placement(index = index).leader.host.ip(),
+                'port': self.placement(index = index).leader.port,
             }
         }
 
@@ -145,7 +145,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                 ]))
 
         bench.log("Reconfiguring the system for a new benchmark")
-        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients", "replicas"], "replicas": ["leaders"]})
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients", "replicas"], "replicas": ["leaders"]}, {"clients": inp.num_client_procs, "leaders": 1, "replicas": inp.num_replicas})
         net.update(endpoints)
         bench.log("Reconfiguration completed")
 
@@ -154,6 +154,14 @@ class VotingSuite(benchmark.Suite[Input, Output]):
         bench.write_string(config_filename,
                            proto_util.message_to_pbtext(config))
         bench.log('Config file config.pbtxt written.')
+
+        client_config_filenames = []
+        for i in range(inp.num_client_procs):
+            filename = bench.abspath(f"client_config_{i}.pbtxt")
+            bench.write_string(filename,
+                           proto_util.message_to_pbtext(net.config(index=i)))
+            client_config_filenames.append(filename)
+
 
         # If we're monitoring the code, run garbage collection verbosely.
         java = ['java']
@@ -228,7 +236,8 @@ class VotingSuite(benchmark.Suite[Input, Output]):
             prometheus_config = prometheus.prometheus_config(
                 int(inp.prometheus_scrape_interval.total_seconds() * 1000), {
                     'voting_client': [
-                        f'{net.prom_placement().client.host.ip()}:{net.prom_placement().client.port}'
+                        f'{e.host.ip()}:{e.port}'
+                        for e in net.prom_placement().clients
                     ],
                     'voting_leader': [
                         f'{net.prom_placement().leader.host.ip()}:' +
@@ -256,57 +265,62 @@ class VotingSuite(benchmark.Suite[Input, Output]):
         bench.log('Client lag ended.')
 
         # Launch the client
-        client = net.placement().client
-        client_proc = bench.popen(
-            host=client.host,
-            label=f'clients',
-            # TODO(mwhittaker): For now, we don't run clients with large
-            # heaps and verbose garbage collection because they are all
-            # colocated on one machine.
-            cmd=[
-                'java',
-                '-cp',
-                os.path.abspath(args['jar']),
-                'frankenpaxos.voting.ClientMain',
-                '--host',
-                client.host.ip(),
-                '--port',
-                str(client.port),
-                '--config',
-                config_filename,
-                '--duration',
-                f'{inp.duration.total_seconds()}s',
-                '--timeout',
-                f'{inp.timeout.total_seconds()}s',
-                '--num_clients',
-                f'{inp.num_clients_per_proc}',
-                '--num_warmup_clients',
-                f'{inp.num_clients_per_proc}',
-                '--warmup_duration',
-                f'{inp.warmup_duration.total_seconds()}s',
-                '--warmup_timeout',
-                f'{inp.warmup_timeout.total_seconds()}s',
-                '--warmup_sleep',
-                f'{inp.warmup_sleep.total_seconds()}s',
-                '--output_file',
-                bench.abspath(f'client_data.csv'),
-                '--prometheus_host',
-                net.prom_placement().client.host.ip(),
-                '--prometheus_port',
-                str(net.prom_placement().client.port),
-                '--log_level',
-                inp.log_level,
-                '--receive_addrs',
-                ','.join([str(x) for x in receive_endpoints[0]]),
-            ])
-        if inp.profiled:
-            client_proc = perf_util.JavaPerfProc(
-                bench, client.host, client_proc, f'clients')
+        client_procs: List[proc.Proc] = []
+        for i in range(inp.num_client_procs):
+            client = net.placement(index=i).clients[i]
+            client_proc = bench.popen(
+                host=client.host,
+                label=f'clients_{i}',
+                # TODO(mwhittaker): For now, we don't run clients with large
+                # heaps and verbose garbage collection because they are all
+                # colocated on one machine.
+                cmd=[
+                    'java',
+                    '-cp',
+                    os.path.abspath(args['jar']),
+                    'frankenpaxos.voting.ClientMain',
+                    '--host',
+                    client.host.ip(),
+                    '--port',
+                    str(client.port),
+                    '--config',
+                    client_config_filenames[i],
+                    '--duration',
+                    f'{inp.duration.total_seconds()}s',
+                    '--timeout',
+                    f'{inp.timeout.total_seconds()}s',
+                    '--num_clients',
+                    f'{inp.num_clients_per_proc}',
+                    '--num_warmup_clients',
+                    f'{inp.num_clients_per_proc}',
+                    '--warmup_duration',
+                    f'{inp.warmup_duration.total_seconds()}s',
+                    '--warmup_timeout',
+                    f'{inp.warmup_timeout.total_seconds()}s',
+                    '--warmup_sleep',
+                    f'{inp.warmup_sleep.total_seconds()}s',
+                    '--output_file',
+                    bench.abspath(f'client_data.csv'),
+                    '--prometheus_host',
+                    net.prom_placement().clients[i].host.ip(),
+                    '--prometheus_port',
+                    str(net.prom_placement().clients[i].port),
+                    '--log_level',
+                    inp.log_level,
+                    '--receive_addrs',
+                    ','.join([str(x) for x in receive_endpoints[i]]),
+                ])
+            if inp.profiled:
+                client_proc = perf_util.JavaPerfProc(
+                    bench, client.host, client_proc, f'clients_{i}')
+            client_procs.append(client_proc)
 
         bench.log(f'Clients started and running for {inp.duration}.')
 
         # Wait for the client to finish and then terminate the server.
-        client_proc.wait()
+        for p in client_procs:
+            p.wait()
+
         leader_proc.kill()
         for p in replica_procs:
              p.kill()

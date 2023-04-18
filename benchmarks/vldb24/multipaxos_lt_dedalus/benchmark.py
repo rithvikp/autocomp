@@ -107,9 +107,9 @@ def main(args) -> None:
                 for num_acceptors in [3]
                 for num_replicas in [3]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
-                    # (1, 1, 1),
+                    (1, 1, 1),
                     # (1, 50, 10),
-                    (1, 100, 10),
+                    # (1, 100, 10),
                     # (2, 100, 10),
                     # (3, 100, 10),
                     # (4, 100, 10),

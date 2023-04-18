@@ -195,7 +195,7 @@ def main(args) -> None:
                     (9, 100, 10),
                     (10, 100, 10),
                 ]
-            ] * 5
+            ]#* 3
 
         def summary(self, input: Input, output: Output) -> str:
             return str({

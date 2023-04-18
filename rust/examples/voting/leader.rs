@@ -81,24 +81,25 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
     let df = datalog!(
         r#"
-.async clientIn `null::<(i64,)>()` `source_stream(client_recv) -> map(|x| deserialize(x.unwrap().1, &vote_requests))`
+.async clientIn `null::<(u32,i64,)>()` `source_stream(client_recv) -> map(|x| {let res = x.unwrap(); (res.0, deserialize(res.1, &vote_requests),)})`
 .async clientOut `map(|(node_id, id)| (node_id, serialize(id))) -> dest_sink(client_send)` `null::<(u32, i64,)>()`
 
 .output stdout `for_each(|s:(i64,)| println!("committed: {:?}", s))`
 .input replicas `repeat_iter(peers.clone()) -> map(|p| (p,))`
 
-.async voteToReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(v))) -> dest_sink(to_replica_sink)` `null::<(i64,)>()`
-.async voteFromReplica `null::<(u32,i64,)>()` `source_stream(from_replica_source) -> map(|v| deserialize_from_bytes::<(u32,i64,)>(v.unwrap().1).unwrap())`
+.async voteToReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(v))) -> dest_sink(to_replica_sink)` `null::<(u32,i64,)>()`
+.async voteFromReplica `null::<(u32,u32,i64,)>()` `source_stream(from_replica_source) -> map(|v| deserialize_from_bytes::<(u32,u32,i64,)>(v.unwrap().1).unwrap())`
 
-voteToReplica@addr(v) :~ clientIn(v), replicas(addr)
-allVotes(l, v) :- voteFromReplica(l, v)
-allVotes(l, v) :+ allVotes(l, v), !committed(v)
-voteCounts(count(l), v) :- allVotes(l, v)
+voteToReplica@addr(client, v) :~ clientIn(client, v), replicas(addr)
+allVotes(l, client, v) :- voteFromReplica(l, client, v)
+allVotes(l, client, v) :+ allVotes(l, client, v), !committed(v)
+valueToClient(v, client) :- allVotes(_, client, v)
+voteCounts(count(l), v) :- allVotes(l, _, v)
 numReplicas(count(addr)) :- replicas(addr)
 committed(v) :- voteCounts(n, v), numReplicas(n)
 // stdout(v) :- committed(v)
 
-clientOut@0(v) :~ committed(v)
+clientOut@addr(v) :~ committed(v), valueToClient(v, addr)
     "#
     );
 

@@ -20,6 +20,7 @@ class SmokeVotingSuite(VotingSuite):
     def inputs(self) -> Collection[Input]:
         def gen_input(clients: int, replicas: int) -> Input:
             return Input(
+                num_client_procs=1,
                 num_clients_per_proc=clients,
                 num_replicas=replicas,
                 jvm_heap_size='100m',
