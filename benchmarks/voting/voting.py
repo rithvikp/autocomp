@@ -300,7 +300,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                     '--warmup_sleep',
                     f'{inp.warmup_sleep.total_seconds()}s',
                     '--output_file',
-                    bench.abspath(f'client_data.csv'),
+                    bench.abspath(f'client_{i}_data.csv'),
                     '--prometheus_host',
                     net.prom_placement().clients[i].host.ip(),
                     '--prometheus_port',
@@ -330,7 +330,8 @@ class VotingSuite(benchmark.Suite[Input, Output]):
         bench.log('Clients finished and processes terminated.')
 
         client_csvs = [
-            bench.abspath(f'client_data.csv')
+            bench.abspath(f'client_{i}_data.csv')
+            for i in range(inp.num_client_procs)
         ]
 
         return benchmark.parse_recorder_data(

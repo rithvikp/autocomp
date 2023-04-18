@@ -10,6 +10,7 @@ use hydroflow::util::{
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
+use std::rc::Rc;
 use std::{collections::HashMap, convert::TryFrom, io::Cursor};
 use tokio::time::{interval_at, Duration, Instant};
 
@@ -30,7 +31,7 @@ pub struct LeaderArgs {
     i_am_leader_check_timeout: Option<u32>,
 }
 
-fn serialize_noop() -> (Vec<u8>,) {
+fn serialize_noop() -> (Rc<Vec<u8>>,) {
     let s = multipaxos_proto::CommandBatchOrNoop {
         value: Some(multipaxos_proto::command_batch_or_noop::Value::Noop(
             multipaxos_proto::Noop {},
@@ -38,12 +39,12 @@ fn serialize_noop() -> (Vec<u8>,) {
     };
     let mut buf = Vec::new();
     s.encode(&mut buf).unwrap();
-    return (buf,);
+    return (Rc::new(buf),);
 }
 
-// fn deserialize(msg: BytesMut, slot: &mut u32) -> Option<(Vec<u8>,u32,)> {
+// fn deserialize(msg: BytesMut, slot: &mut u32) -> Option<(Rc<Vec<u8>>,u32,)> {
 // Returns: (payload, client_id, msg_id)
-fn deserialize(msg: BytesMut) -> Option<(Vec<u8>,i32,i32)> {
+fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>, i32, i32)> {
     if msg.len() == 0 {
         return None;
     }
@@ -66,20 +67,21 @@ fn deserialize(msg: BytesMut) -> Option<(Vec<u8>,i32,i32)> {
             };
             let mut buf = Vec::new();
             out.encode(&mut buf).unwrap();
-            return Some((buf, client_id, msg_id));
+            return Some((Rc::new(buf), client_id, msg_id));
         }
         _ => panic!("Unexpected message from the client"),
     }
 }
 
-fn serialize(payload: Vec<u8>, slot: u32) -> bytes::Bytes {
+fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
     // println!("Serializing slot {}", slot);
-    let command = multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload)).unwrap();
+    let command =
+        multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload.as_ref())).unwrap();
 
     let out = multipaxos_proto::ReplicaInbound {
         request: Some(multipaxos_proto::replica_inbound::Request::Chosen(
             multipaxos_proto::Chosen {
-                slot: i32::try_from(slot).unwrap()-1, // Dedalus starts at slot 1
+                slot: i32::try_from(slot).unwrap() - 1, // Dedalus starts at slot 1
                 command_batch_or_noop: command,
             },
         )),
@@ -193,9 +195,9 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 # Debug
 .output p1aOut `for_each(|(a,pid,id,num):(u32,u32,u32,u32,)| println!("proposer {:?} sent p1a to {:?}: [{:?},{:?},{:?}]", pid, a, pid, id, num))`
 .output p1bOut `for_each(|(pid,a,log_size,id,num,max_id,max_num):(u32,u32,u32,u32,u32,u32,u32,)| println!("proposer {:?} received p1b: [{:?},{:?},{:?},{:?},{:?},{:?}]", pid, a, log_size, id, num, max_id, max_num))`
-.output p1bLogOut `for_each(|(pid,a,payload,slot,payload_id,payload_num,id,num):(u32,u32,Vec<u8>,u32,u32,u32,u32,u32,)| println!("proposer {:?} received p1bLog: [{:?},{:?},{:?},{:?},{:?},{:?},{:?}]", pid, a, payload, slot, payload_id, payload_num, id, num))`
-.output p2aOut `for_each(|(a,pid,payload,slot,id,num):(u32,u32,Vec<u8>,u32,u32,u32,)| println!("proposer {:?} sent p2a to {:?}: [{:?},{:?},{:?},{:?},{:?}]", pid, a, pid, payload, slot, id, num))`
-.output p2bOut `for_each(|(pid,a,_,slot,id,num,max_id,max_num):(u32,u32,Vec<u8>,u32,u32,u32,u32,u32,)| println!("proposer {:?} received p2b: [{:?},{:?},{:?},{:?},{:?},{:?}]", pid, a, slot, id, num, max_id, max_num))`
+.output p1bLogOut `for_each(|(pid,a,payload,slot,payload_id,payload_num,id,num):(u32,u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)| println!("proposer {:?} received p1bLog: [{:?},{:?},{:?},{:?},{:?},{:?},{:?}]", pid, a, payload, slot, payload_id, payload_num, id, num))`
+.output p2aOut `for_each(|(a,pid,payload,slot,id,num):(u32,u32,Rc<Vec<u8>>,u32,u32,u32,)| println!("proposer {:?} sent p2a to {:?}: [{:?},{:?},{:?},{:?},{:?}]", pid, a, pid, payload, slot, id, num))`
+.output p2bOut `for_each(|(pid,a,_,slot,id,num,max_id,max_num):(u32,u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)| println!("proposer {:?} received p2b: [{:?},{:?},{:?},{:?},{:?},{:?}]", pid, a, slot, id, num, max_id, max_num))`
 .output iAmLeaderSendOut `for_each(|(dest,pid,num):(u32,u32,u32,)| println!("proposer {:?} sent iAmLeader to {:?}: [{:?},{:?}]", pid, dest, pid, num))`
 .output iAmLeaderReceiveOut `for_each(|(my_id,pid,num):(u32,u32,u32,)| println!("proposer {:?} received iAmLeader: [{:?},{:?}]", my_id, pid, num))`
 .output throughputOut `for_each(|(num,):(u32,)| println!("{:?}", num))`
@@ -207,11 +209,11 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
 # IDB
 // .input clientIn `repeat_iter_external(vec![()]) -> map(|_| (context.current_tick() as u32,))`
-// .async clientIn `null::<(Vec<u8>,u32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1, &mut slot)))`
-.async clientIn `null::<(Vec<u8>,i32,i32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1)))`
+// .async clientIn `null::<(Rc<Vec<u8>>,u32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1, &mut slot)))`
+.async clientIn `null::<(Rc<Vec<u8>>,i32,i32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1)))`
 // .input clientIn `repeat_iter_external(vec![()]) -> flat_map(|_| (0..3).map(|d| ((context.current_tick() * 3 + d) as u32,)))`
-.output clientStdout `for_each(|(_,slot):(Vec<u8>,u32)| println!("committed {:?}", slot))`
-.async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot))) -> dest_sink(replica_send)` `null::<(Vec<u8>, u32,)>()`
+.output clientStdout `for_each(|(_,slot):(Rc<Vec<u8>>,u32)| println!("committed {:?}", slot))`
+.async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot))) -> dest_sink(replica_send)` `null::<(Rc<Vec<u8>>, u32,)>()`
 
 .input startBallot `repeat_iter([(0 as u32,),])`
 .input startSlot `repeat_iter([(0 as u32,),])`
@@ -221,11 +223,11 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 # p1b: acceptorID, logSize, ballotID, ballotNum, maxBallotID, maxBallotNum
 .async p1bU `null::<(u32,u32,u32,u32,u32,u32,)>()` `source_stream(p1b_source) -> map(|v: Result<(u32,BytesMut,), _>| deserialize_from_bytes::<(u32,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 # p1bLog: acceptorID, payload, slot, payloadBallotID, payloadBallotNum, ballotID, ballotNum
-.async p1bLogU `null::<(u32,Vec<u8>,u32,u32,u32,u32,u32,)>()` `source_stream(p1b_log_source) -> map(|v: Result<(u32,BytesMut,), _>| deserialize_from_bytes::<(u32,Vec<u8>,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
+.async p1bLogU `null::<(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)>()` `source_stream(p1b_log_source) -> map(|v: Result<(u32,BytesMut,), _>| deserialize_from_bytes::<(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 # p2a: proposerID, payload, slot, ballotID, ballotNum
-.async p2a `map(|(node_id, v):(u32,(u32,Vec<u8>,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p2a_sink)` `null::<(u32,Vec<u8>,u32,u32,u32)>()`
+.async p2a `map(|(node_id, v):(u32,(u32,Rc<Vec<u8>>,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p2a_sink)` `null::<(u32,Rc<Vec<u8>>,u32,u32,u32)>()`
 # p2b: acceptorID, payload, slot, ballotID, ballotNum, maxBallotID, maxBallotNum
-.async p2bU `null::<(u32,Vec<u8>,u32,u32,u32,u32,u32)>()` `source_stream(p2b_source) -> map(|v| deserialize_from_bytes::<(u32,Vec<u8>,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
+.async p2bU `null::<(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32)>()` `source_stream(p2b_source) -> map(|v| deserialize_from_bytes::<(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 
 .input p1aTimeout `source_stream(p1a_timeout) -> map(|_| () )` # periodic timer to send p1a, so proposers each send at random times to avoid contention
 .input iAmLeaderResendTimeout `source_stream(i_am_leader_resend_timeout) -> map(|_| () )` # periodic timer to resend iAmLeader

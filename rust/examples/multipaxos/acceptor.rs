@@ -8,6 +8,7 @@ use hydroflow::util::{
 };
 use hydroflow_datalog::datalog;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(clap::Args, Debug)]
 pub struct AcceptorArgs {
@@ -63,9 +64,9 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
 # Debug
 .output p1aOut `for_each(|(a,pid,id,num):(u32,u32,u32,u32,)| println!("acceptor {:?} received p1a: [{:?},{:?},{:?}]", a, pid, id, num))`
 .output p1bOut `for_each(|(pid,a,log_size,id,num,max_id,max_num):(u32,u32,u32,u32,u32,u32,u32,)| println!("acceptor {:?} sent p1b to {:?}: [{:?},{:?},{:?},{:?},{:?},{:?}]", a, pid, a, log_size, id, num, max_id, max_num))`
-.output p1bLogOut `for_each(|(pid,a,payload,slot,payload_id,payload_num,id,num):(u32,u32,Vec<u8>,u32,u32,u32,u32,u32,)| println!("acceptor {:?} sent p1bLog to {:?}: [{:?},{:?},{:?},{:?},{:?},{:?},{:?}]", a, pid, a, payload, slot, payload_id, payload_num, id, num))`
-.output p2aOut `for_each(|(a,pid,payload,slot,id,num):(u32,u32,Vec<u8>,u32,u32,u32,)| println!("acceptor {:?} received p2a: [{:?},{:?},{:?},{:?},{:?}]", a, pid, payload, slot, id, num))`
-.output p2bOut `for_each(|(pid,a,payload,slot,id,num,max_id,max_num):(u32,u32,Vec<u8>,u32,u32,u32,u32,u32,)| println!("acceptor {:?} sent p2b to {:?}: [{:?},{:?},{:?},{:?},{:?},{:?},{:?}]]", a, pid, a, payload, slot, id, num, max_id, max_num))`
+.output p1bLogOut `for_each(|(pid,a,payload,slot,payload_id,payload_num,id,num):(u32,u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)| println!("acceptor {:?} sent p1bLog to {:?}: [{:?},{:?},{:?},{:?},{:?},{:?},{:?}]", a, pid, a, payload, slot, payload_id, payload_num, id, num))`
+.output p2aOut `for_each(|(a,pid,payload,slot,id,num):(u32,u32,Rc<Vec<u8>>,u32,u32,u32,)| println!("acceptor {:?} received p2a: [{:?},{:?},{:?},{:?},{:?}]", a, pid, payload, slot, id, num))`
+.output p2bOut `for_each(|(pid,a,payload,slot,id,num,max_id,max_num):(u32,u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)| println!("acceptor {:?} sent p2b to {:?}: [{:?},{:?},{:?},{:?},{:?},{:?},{:?}]]", a, pid, a, payload, slot, id, num, max_id, max_num))`
 // .output MaxBallot `for_each(|(id,num):(u32,u32)| println!("ballot: [{:?},{:?}]", id, num))`
 // .output id `for_each(|(id):(u32,)| println!("id: [{:?}]", id))`
 
@@ -74,11 +75,11 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
 # p1b: acceptorID, logSize, ballotID, ballotNum, maxBallotID, maxBallotNum
 .async p1b `map(|(node_id, v):(u32,(u32,u32,u32,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p1b_sink)` `null::<(u32,u32,u32,u32,u32,u32)>()`
 # p1bLog: acceptorID, payload, slot, payloadBallotID, payloadBallotNum, ballotID, ballotNum
-.async p1bLog `map(|(node_id, v):(u32,(u32,Vec<u8>,u32,u32,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p1b_log_sink)` `null::<(u32,Vec<u8>,u32,u32,u32,u32,u32)>()`
+.async p1bLog `map(|(node_id, v):(u32,(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p1b_log_sink)` `null::<(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32)>()`
 # p2a: proposerID, payload, slot, ballotID, ballotNum
-.async p2a `null::<(u32,Vec<u8>,u32,u32,u32,)>()` `source_stream(p2a_source) -> map(|v: Result<(u32, BytesMut), _>| deserialize_from_bytes::<(u32,Vec<u8>,u32,u32,u32,)>(v.unwrap().1).unwrap())`
+.async p2a `null::<(u32,Rc<Vec<u8>>,u32,u32,u32,)>()` `source_stream(p2a_source) -> map(|v: Result<(u32, BytesMut), _>| deserialize_from_bytes::<(u32,Rc<Vec<u8>>,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 # p2b: acceptorID, payload, slot, ballotID, ballotNum, maxBallotID, maxBallotNum
-.async p2b `map(|(node_id, v):(u32,(u32,Vec<u8>,u32,u32,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p2b_sink)` `null::<(u32,Vec<u8>,u32,u32,u32,u32,u32)>()`
+.async p2b `map(|(node_id, v):(u32,(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p2b_sink)` `null::<(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32)>()`
 ######################## end relation definitions
 
 

@@ -411,6 +411,7 @@ dependencies = [
  "prost",
  "prost-build",
  "rand 0.8.5",
+ "serde",
  "serde_json",
  "tokio",
 ]
@@ -619,6 +620,7 @@ dependencies = [
  "serde-big-array",
  "serde_json",
  "slotmap",
+ "smallvec",
  "static_assertions",
  "tokio",
  "tokio-stream",
