@@ -11,8 +11,7 @@ use hydroflow::util::{
 use hydroflow_datalog::datalog;
 use prost::Message;
 use std::rc::Rc;
-use std::{collections::HashMap, convert::TryFrom, io::Cursor};
-use tokio::time::{interval_at, Duration, Instant};
+use std::{collections::HashMap, convert::TryFrom, io::Cursor, time::SystemTime};
 
 #[derive(clap::Args, Debug)]
 pub struct LeaderArgs {
@@ -44,18 +43,15 @@ fn serialize_noop() -> (Rc<Vec<u8>>,) {
 
 // fn deserialize(msg: BytesMut, slot: &mut u32) -> Option<(Rc<Vec<u8>>,u32,)> {
 // Returns: (payload, client_id, msg_id)
-fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>, i32, i32)> {
+fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,)> {
     if msg.len() == 0 {
         return None;
     }
     // *slot += 1;
-    // println!("slot {}", slot);
     let s = multipaxos_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
 
     match s.request.unwrap() {
         multipaxos_proto::leader_inbound::Request::ClientRequest(r) => {
-            let client_id = r.command.command_id.client_pseudonym;
-            let msg_id = r.command.command_id.client_id;
             let out = multipaxos_proto::CommandBatchOrNoop {
                 value: Some(
                     multipaxos_proto::command_batch_or_noop::Value::CommandBatch(
@@ -67,7 +63,7 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>, i32, i32)> {
             };
             let mut buf = Vec::new();
             out.encode(&mut buf).unwrap();
-            return Some((Rc::new(buf), client_id, msg_id));
+            return Some((Rc::new(buf),));
         }
         _ => panic!("Unexpected message from the client"),
     }
@@ -87,6 +83,13 @@ fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
         )),
     };
     // println!("serialize: {:?}", out.request.as_ref().unwrap());
+    // println!(
+    //     "serialize slot {} at time {}",
+    //     slot,
+    //     SystemTime::now()
+    //         .duration_since(SystemTime::UNIX_EPOCH)
+    //         .unwrap().as_millis()
+    // );
     // let s = frankenpaxos::multipaxos_proto::ClientReply {
     //     id: v.0,
     //     accepted: true,
@@ -208,10 +211,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 .output LeaderExpiredOut `for_each(|(pid,):(u32,)| println!("proposer {:?} leader expired", pid))`
 
 # IDB
-// .input clientIn `repeat_iter_external(vec![()]) -> map(|_| (context.current_tick() as u32,))`
-// .async clientIn `null::<(Rc<Vec<u8>>,u32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1, &mut slot)))`
-.async clientIn `null::<(Rc<Vec<u8>>,i32,i32,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1)))`
-// .input clientIn `repeat_iter_external(vec![()]) -> flat_map(|_| (0..3).map(|d| ((context.current_tick() * 3 + d) as u32,)))`
+.async clientIn `null::<(Rc<Vec<u8>>,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1)))`
 .output clientStdout `for_each(|(_,slot):(Rc<Vec<u8>>,u32)| println!("committed {:?}", slot))`
 .async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot))) -> dest_sink(replica_send)` `null::<(Rc<Vec<u8>>, u32,)>()`
 
@@ -250,17 +250,15 @@ receivedBallots(i, n) :+ receivedBallots(i, n)
 // .persist receivedBallots
 iAmLeader(i, n) :- iAmLeaderU(i, n)
 iAmLeader(i, n) :+ iAmLeader(i, n), !iAmLeaderCheckTimeout() # clear iAmLeader periodically (like LRU clocks)
-payloads(p, clientID, msgID) :- clientIn(p, clientID, msgID)
-payloads(p, clientID, msgID) :+ payloads(p, clientID, msgID), !ChosenPayload(clientID, msgID)
 
 # Initialize
 ballot(zero) :- startBallot(zero)
 
 # Debug
-p1aOut(a, i, i, num) :- id(i), NewBallot(num), p1aTimeout(), LeaderExpired(), acceptors(a)
-p1aOut(a, i, i, num) :- id(i), ballot(num), !NewBallot(newNum), p1aTimeout(), LeaderExpired(), acceptors(a)
-p1bOut(pid, a, logSize, id, num, maxID, maxNum) :- id(pid), p1bU(a, logSize, id, num, maxID, maxNum)
-p1bLogOut(pid, a, payload, slot, payloadBallotID, payloadBallotNum, id, num) :- id(pid), p1bLogU(a, payload, slot, payloadBallotID, payloadBallotNum, id, num)
+// p1aOut(a, i, i, num) :- id(i), NewBallot(num), p1aTimeout(), LeaderExpired(), acceptors(a)
+// p1aOut(a, i, i, num) :- id(i), ballot(num), !NewBallot(newNum), p1aTimeout(), LeaderExpired(), acceptors(a)
+// p1bOut(pid, a, logSize, id, num, maxID, maxNum) :- id(pid), p1bU(a, logSize, id, num, maxID, maxNum)
+// p1bLogOut(pid, a, payload, slot, payloadBallotID, payloadBallotNum, id, num) :- id(pid), p1bLogU(a, payload, slot, payloadBallotID, payloadBallotNum, id, num)
 // p2aOut(a, i, payload, slot, i, num) :- ResentLog(payload, slot), id(i), ballot(num), acceptors(a)
 p2aOut(a, i, no, slot, i, num) :- FilledHoles(no, slot), id(i), ballot(num), acceptors(a) # Weird bug where if this line is commented out, id has an error?
 // p2aOut(a, i, payload, slot, i, num) :- ChosenPayload(payload), nextSlot(slot), id(i), ballot(num), acceptors(a)
@@ -271,7 +269,6 @@ p2aOut(a, i, no, slot, i, num) :- FilledHoles(no, slot), id(i), ballot(num), acc
 // throughputOut(num) :- totalCommitted(num), p1aTimeout(), IsLeader()
 // nextSlotOut(num) :- nextSlot(num), p1aTimeout(), IsLeader()
 // acceptorThroughputOut(acceptorID, num) :- totalAcceptorSentP2bs(acceptorID, num), p1aTimeout(), IsLeader()
-// clientStdout(payload, slot) :- commit(payload, slot)
 
 ######################## stable leader election
 RelevantP1bs(acceptorID, logSize) :- p1b(acceptorID, logSize, i, num, maxID, maxNum), id(i), ballot(num)
@@ -284,12 +281,12 @@ HasLargestBallot() :- MaxReceivedBallot(maxId, maxNum), id(i), ballot(num), (num
 HasLargestBallot() :- MaxReceivedBallot(maxId, maxNum), id(i), ballot(num), (num == maxNum), (i >= maxId)
 
 # send heartbeat if we're the leader.
-iAmLeaderU@pid(i, num) :~ id(i), ballot(num), IsLeader(), proposers(pid), iAmLeaderResendTimeout(), !id(pid) # don't send to self
-LeaderExpired() :- iAmLeaderCheckTimeout(), !iAmLeader(i, n), !IsLeader()
+iAmLeaderU@pid(i, num) :~ iAmLeaderResendTimeout(), id(i), ballot(num), IsLeader(), proposers(pid), !id(pid) # don't send to self
+LeaderExpired() :- iAmLeaderCheckTimeout(), !IsLeader(), !iAmLeader(i, n)
 
 # Resend p1a if we waited a random amount of time (timeout) AND leader heartbeat timed out. Send NewBallot if it was just triggered (ballot is updated in t+1), otherwise send ballot.
-p1a@a(i, i, num) :~ id(i), NewBallot(num), p1aTimeout(), LeaderExpired(), acceptors(a)
-p1a@a(i, i, num) :~ id(i), ballot(num), !NewBallot(newNum), p1aTimeout(), LeaderExpired(), acceptors(a)
+p1a@a(i, i, num) :~ p1aTimeout(), LeaderExpired(), id(i), NewBallot(num), acceptors(a)
+p1a@a(i, i, num) :~ p1aTimeout(), LeaderExpired(), id(i), ballot(num), !NewBallot(newNum), acceptors(a)
 
 # ballot = max + 1. If anothe proposer sends iAmLeader, that contains its ballot, which updates our ballot (to be even higher), so we are no longer the leader (RelevantP1bs no longer relevant)
 NewBallot(maxNum + 1) :- MaxReceivedBallot(maxId, maxNum), id(i), ballot(num), (maxNum >= num), (maxId != i)
@@ -315,7 +312,7 @@ CommittedLog(payload, slot) :- P1bMatchingEntry(payload, slot, c, payloadBallotI
 P1bLargestEntryBallotNum(slot, max(payloadBallotNum)) :- RelevantP1bLogs(acceptorID, payload, slot, payloadBallotID, payloadBallotNum)
 P1bLargestEntryBallot(slot, max(payloadBallotID), payloadBallotNum) :- P1bLargestEntryBallotNum(slot, payloadBallotNum), RelevantP1bLogs(acceptorID, payload, slot, payloadBallotID, payloadBallotNum)
 # makes sure that p2as cannot be sent yet; otherwise resent slots might conflict. Once p2as can be sent, a new p1b log might tell us to propose a payload for the same slot we propose (in parallel) for p2a, which violates an invariant.
-ResentLog(payload, slot) :- P1bLargestEntryBallot(slot, payloadBallotID, payloadBallotNum), P1bMatchingEntry(payload, slot, c, payloadBallotID, payloadBallotNum), !CommittedLog(otherPayload, slot), IsLeader(), !nextSlot(s)
+ResentLog(payload, slot) :- !nextSlot(s), IsLeader(), P1bLargestEntryBallot(slot, payloadBallotID, payloadBallotNum), P1bMatchingEntry(payload, slot, c, payloadBallotID, payloadBallotNum), !CommittedLog(otherPayload, slot)
 p2a@a(i, payload, slot, i, num) :~ ResentLog(payload, slot), id(i), ballot(num), acceptors(a)
 
 # hole filling: if a slot is not in ResentEntries or proposedLog but it's smaller than max, then propose noop. Provides invariant that all holes are filled (proposed) by next timestep and we can just assign slots as current slot+1
@@ -324,44 +321,31 @@ ProposedSlots(slot) :- CommittedLog(payload, slot)
 ProposedSlots(slot) :- ResentLog(payload, slot)
 MaxProposedSlot(max(slot)) :- ProposedSlots(slot)
 PrevSlots(s) :- MaxProposedSlot(maxSlot), less_than(s, maxSlot)
-FilledHoles(no, s) :- noop(no), !ProposedSlots(s), PrevSlots(s), IsLeader(), !nextSlot(s2)
+FilledHoles(no, s) :- !nextSlot(s2), IsLeader(), noop(no), !ProposedSlots(s), PrevSlots(s)
 p2a@a(i, no, slot, i, num) :~ FilledHoles(no, slot), id(i), ballot(num), acceptors(a)
 
 # To assign values sequential slots after reconciling p1bs, start at max+1
-nextSlot(s+1) :+ IsLeader(), MaxProposedSlot(s), !nextSlot(s2)
+nextSlot(s+1) :+ !nextSlot(s2), IsLeader(), MaxProposedSlot(s)
 ######################## end reconcile p1b log with local log
 
 ######################## send p2as
 # assign a slot
-// ChosenPayload(choose(payload)) :- payloads(payload), nextSlot(s), IsLeader() # drop all payloads that we can't handle in this tick by not persisting clientIn
-ChosenPayload(choose(clientID), choose(msgID)) :- payloads(payload, clientID, msgID), nextSlot(s), IsLeader()
-p2a@a(i, payload, slot, i, num) :~ payloads(payload, clientID, msgID), ChosenPayload(clientID, msgID), nextSlot(slot), id(i), ballot(num), acceptors(a)
-// p2a@a(i, payload, slot, i, num) :~ clientIn(payload, slot), id(i), ballot(num), acceptors(a)
+IndexedPayloads(payload, index()) :- clientIn(payload), nextSlot(s), IsLeader()
+p2a@a(i, payload, (slot + offset), i, num) :~ IndexedPayloads(payload, offset), nextSlot(slot), id(i), ballot(num), acceptors(a)
+
 # Increment the slot if a payload was chosen
-nextSlot(s+1) :+ ChosenPayload(_, _), nextSlot(s)
+NumPayloads(count(payload)) :- clientIn(payload)
+nextSlot(s+num) :+ NumPayloads(num), nextSlot(s)
 # Don't increment the slot if no payload was chosen, but we are still the leader
-nextSlot(s) :+ !ChosenPayload(_, _), nextSlot(s), IsLeader()
+nextSlot(s) :+ !NumPayloads(num), nextSlot(s), IsLeader()
 ######################## end send p2as
 
 ######################## process p2bs
 CountMatchingP2bs(payload, slot, count(acceptorID), i, num) :- p2b(acceptorID, payload, slot, i, num, payloadBallotID, payloadBallotNum)
-commit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), quorum(size), (c >= size)
+// commit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), quorum(size), (c >= size)
 allCommit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), fullQuorum(c)
-MaxCommits(max(slot)) :- commit(payload, slot)
-// clientOut@r(payload, slot) :~ commit(payload, slot), replicas(r), !notFirstTimeCommit(slot)
 clientOut@r(payload, slot) :~ allCommit(payload, slot), replicas(r)
 
-// notFirstTimeCommit(slot) :+ commit(payload, slot)
-
-totalCommitted(new) :+ !totalCommitted(prev), MaxCommits(new)
-totalCommitted(prev) :+ totalCommitted(prev), !MaxCommits(new)
-totalCommitted(new) :+ totalCommitted(prev), MaxCommits(new), (prev < new)
-totalCommitted(prev) :+ totalCommitted(prev), MaxCommits(new), (prev >= new)
-
-// acceptorSentP2bs(acceptorID, count(slot)) :- p2bU(acceptorID, payload, slot, i, num, payloadBallotID, payloadBallotNum)
-// totalAcceptorSentP2bs(acceptorID, new) :+ !totalAcceptorSentP2bs(acceptorID, prev), acceptorSentP2bs(acceptorID, new)
-// totalAcceptorSentP2bs(acceptorID, prev) :+ totalAcceptorSentP2bs(acceptorID, prev), !acceptorSentP2bs(acceptorID, new)
-// totalAcceptorSentP2bs(acceptorID, (prev + new)) :+ totalAcceptorSentP2bs(acceptorID, prev), acceptorSentP2bs(acceptorID, new)
 ######################## end process p2bs
     "#
     );
@@ -370,6 +354,9 @@ totalCommitted(prev) :+ totalCommitted(prev), MaxCommits(new), (prev >= new)
 }
 
 fn periodic(timeout: u32) -> IntervalStream {
-    let start = Instant::now() + Duration::from_millis(timeout.into());
-    IntervalStream::new(interval_at(start, Duration::from_millis(timeout.into())))
+    let start = tokio::time::Instant::now() + tokio::time::Duration::from_millis(timeout.into());
+    IntervalStream::new(tokio::time::interval_at(
+        start,
+        tokio::time::Duration::from_millis(timeout.into()),
+    ))
 }

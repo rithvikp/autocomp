@@ -444,10 +444,12 @@ class HydroState(State):
                         s.tagged(i).send_to(demux)
                 else:
                     # This special case is needed since custom ports can't be used with tagged senders
-                    num_receivers = len(self._services[receiver])
                     for i, s in enumerate(senders):
+                        receiver_ports = []
+                        for j in range(i, len(receivers), len(senders)):
+                            receiver_ports.append(receivers[j])
                         demux = hydro.demux({
-                            j: r for j, r in enumerate(receivers[i*num_receivers:(i+1)*num_receivers])
+                            j: r for j, r in enumerate(receiver_ports)
                         })
                         s.send_to(demux)
         
@@ -487,10 +489,10 @@ class HydroState(State):
         assert len(self._hydroflow_receive_endpoints) == 1, "Only one custom service can currently receive from any hydroflow service"
         receive_endpoints = list(self._hydroflow_receive_endpoints.values())[0]
 
-        # print("extra endpoints:", receive_endpoints)
-        # print("Endpoints:")
-        # for role, ep in endpoints.items():
-        #     print(role, ep)
+        print("extra endpoints:", receive_endpoints)
+        print("Endpoints:")
+        for role, ep in endpoints.items():
+            print(role, ep)
 
         return endpoints, receive_endpoints
 
