@@ -139,7 +139,7 @@ class DedalusMultiPaxosNet:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
 
         def portify(role: str, n: int) -> List[host.Endpoint]:
-            return [portify_one(e) for e in self._endpoints[role].get_range(n)]
+            return [portify_one(e) for e in self._endpoints[role].get_range(n, sender=-1)]
 
         return self.Placement(
             clients=portify('clients', self._input.num_client_procs),
@@ -148,7 +148,7 @@ class DedalusMultiPaxosNet:
             replicas=portify('replicas', self._input.num_replicas),
         )
 
-    def placement(self) -> Placement:
+    def placement(self, index: int = 0) -> Placement:
         ports = itertools.count(10000, 100)
 
         def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
@@ -157,7 +157,7 @@ class DedalusMultiPaxosNet:
             return e
 
         def portify(role: str, n: int) -> List[host.Endpoint]:
-            return [portify_one(e) for e in self._endpoints[role].get_range(n)]
+            return [portify_one(e) for e in self._endpoints[role].get_range(n, sender=index)]
 
         return self.Placement(
             clients=portify('clients', self._input.num_client_procs),
@@ -166,7 +166,7 @@ class DedalusMultiPaxosNet:
             replicas=portify('replicas', self._input.num_replicas),
         )
 
-    def config(self) -> proto_util.Message:
+    def config(self, index: int = 0) -> proto_util.Message:
         return {
             'f': self._input.f,
             'batcher_address': [],
@@ -174,25 +174,25 @@ class DedalusMultiPaxosNet:
             'leader_address': [{
                 'host': e.host.ip(),
                 'port': e.port
-            } for e in self.placement().leaders],
+            } for e in self.placement(index=index).leaders],
             'leader_election_address': [{
                 'host': e.host.ip(),
                 'port': e.port
-            } for e in self.placement().leaders],
+            } for e in self.placement(index=index).leaders],
             'proxy_leader_address': [{
                 'host': e.host.ip(),
                 'port': e.port
-            } for e in self.placement().leaders],
+            } for e in self.placement(index=index).leaders],
             'acceptor_address': [{
                 'acceptor_address': [{
                     'host': e.host.ip(),
                     'port': e.port
-                } for e in self.placement().acceptors]
+                } for e in self.placement(index=index).acceptors]
             }],
             'replica_address': [{
                 'host': e.host.ip(),
                 'port': e.port
-            } for e in self.placement().replicas],
+            } for e in self.placement(index=index).replicas],
             'proxy_replica_address': [],
             'flexible': False,
             'distribution_scheme': DistributionScheme.HASH,
@@ -271,6 +271,14 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                            proto_util.message_to_pbtext(config))
         bench.log('Config file config.pbtxt written.')
 
+        client_config_filenames = []
+        for i in range(input.num_client_procs):
+            filename = bench.abspath(f"client_config_{i}.pbtxt")
+            bench.write_string(filename,
+                           proto_util.message_to_pbtext(net.config(index=i)))
+            client_config_filenames.append(filename)
+        bench.log('Client-specific config files written.')
+
         def java(heap_size: str) -> List[str]:
             cmd = ['java', f'-Xms{heap_size}', f'-Xmx{heap_size}']
             if input.monitored:
@@ -321,6 +329,8 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                                  recover_log_entry_max_period.total_seconds()),
                     '--options.unsafeDontRecover',
                     str(input.replica_options.unsafe_dont_recover),
+                    '--options.connectToLeader',
+                    str(False),
                     '--receive_addrs',
                     ','.join([str(x) for x in receive_endpoints[i]]),
                 ],
@@ -384,7 +394,8 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
             proto_util.message_to_pbtext(input.write_workload.to_proto()))
 
         client_procs: List[proc.Proc] = []
-        for (i, client) in enumerate(net.placement().clients):
+        for i in range(input.num_client_procs):
+            client = net.placement(index=i).clients[i]
             p = bench.popen(
                 host=client.host,
                 label=f'clients_{i}',
@@ -400,7 +411,7 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                     '--port',
                     str(client.port),
                     '--config',
-                    config_filename,
+                    client_config_filenames[i],
                     '--log_level',
                     input.client_log_level,
                     '--prometheus_host',

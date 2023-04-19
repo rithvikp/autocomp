@@ -53,7 +53,8 @@ case class ReplicaOptions(
     // recover log entries. This is not live and should only be used for
     // performance debugging.
     unsafeDontRecover: Boolean,
-    measureLatencies: Boolean
+    measureLatencies: Boolean,
+    connectToLeader: Boolean
 )
 
 @JSExportAll
@@ -65,7 +66,8 @@ object ReplicaOptions {
     recoverLogEntryMinPeriod = java.time.Duration.ofMillis(5000),
     recoverLogEntryMaxPeriod = java.time.Duration.ofMillis(10000),
     unsafeDontRecover = false,
-    measureLatencies = true
+    measureLatencies = true,
+    connectToLeader = true
   )
 }
 
@@ -176,13 +178,21 @@ class Replica[Transport <: frankenpaxos.Transport[Transport]](
 
   // Leader channels.
   private val leaders: Seq[Chan[Leader[Transport]]] =
-    for (a <- config.leaderAddresses)
-      yield chan[Leader[Transport]](a, Leader.serializer)
+    if (options.connectToLeader){
+      for (a <- config.leaderAddresses)
+        yield chan[Leader[Transport]](a, Leader.serializer)
+  } else {
+    Seq()
+  }
 
   // ProxyReplica channels.
   private val proxyReplicas: Seq[Chan[ProxyReplica[Transport]]] =
-    for (a <- config.proxyReplicaAddresses)
-      yield chan[ProxyReplica[Transport]](a, ProxyReplica.serializer)
+    if (options.connectToLeader) {
+      for (a <- config.proxyReplicaAddresses)
+        yield chan[ProxyReplica[Transport]](a, ProxyReplica.serializer)
+    } else {
+      Seq()
+    }
 
   // Replica index.
   logger.check(config.replicaAddresses.contains(address))

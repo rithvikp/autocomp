@@ -41,13 +41,10 @@ fn serialize_noop() -> (Rc<Vec<u8>>,) {
     return (Rc::new(buf),);
 }
 
-// fn deserialize(msg: BytesMut, slot: &mut u32) -> Option<(Rc<Vec<u8>>,u32,)> {
-// Returns: (payload, client_id, msg_id)
 fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,)> {
     if msg.len() == 0 {
         return None;
     }
-    // *slot += 1;
     let s = multipaxos_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
 
     match s.request.unwrap() {
@@ -70,7 +67,6 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,)> {
 }
 
 fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
-    // println!("Serializing slot {}", slot);
     let command =
         multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload.as_ref())).unwrap();
 
@@ -82,18 +78,7 @@ fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
             },
         )),
     };
-    // println!("serialize: {:?}", out.request.as_ref().unwrap());
-    // println!(
-    //     "serialize slot {} at time {}",
-    //     slot,
-    //     SystemTime::now()
-    //         .duration_since(SystemTime::UNIX_EPOCH)
-    //         .unwrap().as_millis()
-    // );
-    // let s = frankenpaxos::multipaxos_proto::ClientReply {
-    //     id: v.0,
-    //     accepted: true,
-    // };
+
     let mut buf = Vec::new();
     out.encode(&mut buf).unwrap();
     return bytes::Bytes::from(buf);
@@ -180,8 +165,6 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
     let replicas = replica_port.keys.clone();
     let replica_send = replica_port.into_sink();
-
-    let mut slot = 0;
 
     let df = datalog!(
         r#"
