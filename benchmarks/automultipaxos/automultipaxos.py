@@ -75,6 +75,8 @@ class Input(NamedTuple):
     num_leaders: int
     num_acceptors: int
     num_replicas: int
+    num_p2a_proxy_leaders_per_leader: int
+    num_p2b_proxy_leaders_per_leader: int
     client_jvm_heap_size: str
     replica_jvm_heap_size: str
 
@@ -109,16 +111,16 @@ class Input(NamedTuple):
     client_log_level: str
 
 
-class DedalusMultiPaxosOutput(NamedTuple):
+class AutoMultiPaxosOutput(NamedTuple):
     read_output: benchmark.RecorderOutput
     write_output: benchmark.RecorderOutput
 
 
-Output = DedalusMultiPaxosOutput
+Output = AutoMultiPaxosOutput
 
 
 # Networks #####################################################################
-class DedalusMultiPaxosNet:
+class AutoMultiPaxosNet:
     def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider]):
         self._input = inp
         self._endpoints = endpoints
@@ -131,6 +133,8 @@ class DedalusMultiPaxosNet:
         leaders: List[host.Endpoint]
         acceptors: List[host.Endpoint]
         replicas: List[host.Endpoint]
+        p2a_proxy_leaders: List[host.Endpoint]
+        p2b_proxy_leaders: List[host.Endpoint]
 
     def prom_placement(self) -> Placement:
         ports = itertools.count(40001, 100)
@@ -146,6 +150,8 @@ class DedalusMultiPaxosNet:
             leaders=portify('leaders', self._input.num_leaders),
             acceptors=portify('acceptors', self._input.num_acceptors),
             replicas=portify('replicas', self._input.num_replicas),
+            p2a_proxy_leaders=portify('p2a_proxy_leaders', self._input.num_p2a_proxy_leaders_per_leader * self._input.num_leaders),
+            p2b_proxy_leaders=portify('p2b_proxy_leaders', self._input.num_p2b_proxy_leaders_per_leader * self._input.num_leaders),
         )
 
     def placement(self, index: int = 0) -> Placement:
@@ -164,6 +170,8 @@ class DedalusMultiPaxosNet:
             leaders=portify('leaders', self._input.num_leaders),
             acceptors=portify('acceptors', self._input.num_acceptors),
             replicas=portify('replicas', self._input.num_replicas),
+            p2a_proxy_leaders=portify('p2a_proxy_leaders', self._input.num_p2a_proxy_leaders_per_leader * self._input.num_leaders),
+            p2b_proxy_leaders=portify('p2b_proxy_leaders', self._input.num_p2b_proxy_leaders_per_leader * self._input.num_leaders),
         )
 
     def config(self, index: int = 0) -> proto_util.Message:
@@ -200,13 +208,13 @@ class DedalusMultiPaxosNet:
 
 
 # Suite ########################################################################
-class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
+class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
     def run_benchmark(self,
                       bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any],
                       input: Input) -> Output:
         assert input.f*2 + 1 == input.num_acceptors
-        net = DedalusMultiPaxosNet(input, self.provisioner.hosts(input.f))
+        net = AutoMultiPaxosNet(input, self.provisioner.hosts(input.f))
 
         # Launch acceptors.
         if self.service_type("acceptors") == "hydroflow":
@@ -223,7 +231,7 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                     str(acceptor.port),
                 ]))
         else:
-            raise ValueError("DedalusMultipaxos only supports hydroflow acceptors")
+            raise ValueError("AutoMultiPaxos only supports hydroflow acceptors")
 
         # Launch leaders.
         leader_procs: List[proc.Proc] = []
@@ -249,6 +257,31 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
                 '--prometheus-port',
                 str(leader.port)
             ]))
+        
+        # Launch p2a proxy leaders
+        p2a_proxy_leader_procs: List[proc.Proc] = []
+        for (i, proxy_leader) in enumerate(net.prom_placement().p2a_proxy_leaders):
+            p2a_proxy_leader_procs.append(self.provisioner.popen_hydroflow(bench, f'p2a_proxy_leaders_{i}', input.f, [
+                '--service',
+                'p2a_proxy_leader',
+                '--prometheus-host',
+                proxy_leader.host.ip(),
+                '--prometheus-port',
+                str(proxy_leader.port)
+            ]))
+
+        # Launch p2b proxy leaders
+        p2b_proxy_leader_procs: List[proc.Proc] = []
+        for (i, proxy_leader) in enumerate(net.prom_placement().p2b_proxy_leaders):
+            p2b_proxy_leader_procs.append(self.provisioner.popen_hydroflow(bench, f'p2b_proxy_leaders_{i}', input.f, [
+                '--service',
+                'p2b_proxy_leader',
+                '--prometheus-host',
+                proxy_leader.host.ip(),
+                '--prometheus-port',
+                str(proxy_leader.port)
+            ]))
+
 
         bench.log("Reconfiguring the system for a new benchmark")
         endpoints, receive_endpoints = self.provisioner.rebuild(1, {
@@ -530,7 +563,7 @@ class DedalusMultiPaxosSuite(benchmark.Suite[Input, Output]):
         write_output = (labeled_data['write']
                         if 'write' in labeled_data
                         else dummy_output)
-        return DedalusMultiPaxosOutput(read_output = read_output,
+        return AutoMultiPaxosOutput(read_output = read_output,
                                 write_output = write_output)
 
 

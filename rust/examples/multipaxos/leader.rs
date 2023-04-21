@@ -11,7 +11,7 @@ use hydroflow::util::{
 use hydroflow_datalog::datalog;
 use prost::Message;
 use std::rc::Rc;
-use std::{collections::HashMap, convert::TryFrom, io::Cursor, time::SystemTime};
+use std::{collections::HashMap, convert::TryFrom, io::Cursor};
 
 #[derive(clap::Args, Debug)]
 pub struct LeaderArgs {

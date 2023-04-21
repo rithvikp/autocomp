@@ -1,8 +1,8 @@
-from ...multipaxos.multipaxos import *
+from benchmarks.multipaxos.multipaxos import *
 
-# hpython -m benchmarks.sigmod23.scala_multipaxos_lt.benchmark -j /mnt/nfs/tmp/frankenpaxos-assembly-0.1.0-SNAPSHOT.jar -m -s /mnt/nfs/tmp/ -l info --cluster_config ../clusters/multipaxos/scala_hydro_config.json
+# hpython -m benchmarks.vldb24.scala_comp_paxos_benchmark -j /mnt/nfs/tmp/frankenpaxos-assembly-0.1.0-SNAPSHOT.jar -m -s /mnt/nfs/tmp/ -l info --cluster_config ../clusters/multipaxos/scala_hydro_config.json
 
-# python -m benchmarks.sigmod23.scala_multipaxos_lt.benchmark -j /mnt/nfs/tmp/frankenpaxos-assembly-0.1.0-SNAPSHOT.jar -m -s /mnt/nfs/tmp/ -l info --cluster_config ../clusters/multipaxos/scala_config.json
+# python -m benchmarks.vldb24.scala_comp_paxos_benchmark -j /mnt/nfs/tmp/frankenpaxos-assembly-0.1.0-SNAPSHOT.jar -m -s /mnt/nfs/tmp/ -l info --cluster_config ../clusters/multipaxos/scala_config.json
 
 def main(args) -> None:
     class Suite(MultiPaxosSuite):
@@ -53,11 +53,11 @@ def main(args) -> None:
                     replica_jvm_heap_size = '12g',
                     proxy_replica_jvm_heap_size = '12g',
                     measurement_group_size = 10,
-                    warmup_duration = datetime.timedelta(seconds=10),
-                    warmup_timeout = datetime.timedelta(seconds=15),
+                    warmup_duration = datetime.timedelta(seconds=25),
+                    warmup_timeout = datetime.timedelta(seconds=30),
                     warmup_sleep = datetime.timedelta(seconds=5),
-                    duration = datetime.timedelta(seconds=15),
-                    timeout = datetime.timedelta(seconds=20),
+                    duration = datetime.timedelta(seconds=60),
+                    timeout = datetime.timedelta(seconds=65),
                     client_lag = datetime.timedelta(seconds=5),
                     state_machine = 'KeyValueStore',
                     predetermined_read_fraction = -1,
@@ -170,7 +170,7 @@ def main(args) -> None:
                 # ]
 
                 # for value_size in [16, 100, 1000]
-                for value_size in [100, 1000]
+                for value_size in [16]
                 for num_batchers in [0]
                 for batch_size in [0]
                 for num_proxy_replicas in [0]
@@ -182,7 +182,7 @@ def main(args) -> None:
                     (True, 2, 2),
                 ]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
-                    (1, 1, 1),
+                    # (1, 1, 1),
                     (1, 50, 10),
                     (1, 100, 10),
                     (2, 100, 10),

@@ -355,7 +355,7 @@ class HydroState(State):
         This method should be called after every benchmark.
         """
         async def stop(_):
-            for s in self._services.values():
+            for role, s in self._services.items():
                 for service in s:
                     await service.stop()
         
@@ -489,10 +489,10 @@ class HydroState(State):
         assert len(self._hydroflow_receive_endpoints) == 1, "Only one custom service can currently receive from any hydroflow service"
         receive_endpoints = list(self._hydroflow_receive_endpoints.values())[0]
 
-        print("extra endpoints:", receive_endpoints)
-        print("Endpoints:")
-        for role, ep in endpoints.items():
-            print(role, ep)
+        # print("extra endpoints:", receive_endpoints)
+        # print("Endpoints:")
+        # for role, ep in endpoints.items():
+        #     print(role, ep)
 
         return endpoints, receive_endpoints
 
@@ -501,6 +501,7 @@ class HydroState(State):
         """
         await self._deployment.deploy()
         await self._deployment.start()
+
         self._hydroflow_endpoints: Dict[str, List[List[host.PartialEndpoint]]] = {}
         self._hydroflow_receive_endpoints: Dict[str, List[List[host.Endpoint]]] = {}
 

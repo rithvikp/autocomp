@@ -1,7 +1,7 @@
-from benchmarks.autovoting.autovoting import *
+from benchmarks.voting.voting import *
 
 def main(args) -> None:
-    class Suite(AutoVotingSuite):
+    class Suite(VotingSuite):
         def __init__(self, args) -> None:
             self._args = args
             super().__init__()
@@ -13,27 +13,23 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'replicas': 21, # Max across any benchmark
-                    'collectors': 3, # Max across any benchmark
-                    'broadcasters': 3, # Max across any benchmark
-                    'clients': 1,
+                    'replicas': 7, # Max across any benchmark
+                    'clients': 6,
                 },
             }
-
+        
         def inputs(self) -> Collection[Input]:
-            def gen_input(clients: int, replica_groups: int, replica_partitions: int, collectors: int, broadcasters: int, leader_flush_every_n: int) -> Input:
-                return Input(
-                    num_clients_per_proc=clients,
-                    num_replica_groups=replica_groups,
-                    num_replica_partitions=replica_partitions,
-                    num_broadcasters=broadcasters,
-                    num_collectors=collectors,
+            return [
+                Input(
+                    num_client_procs = num_client_procs,
+                    num_clients_per_proc=num_clients_per_proc,
+                    num_replicas=num_replicas,
                     jvm_heap_size='100m',
                     duration=datetime.timedelta(seconds=60),
                     timeout=datetime.timedelta(seconds=120),
                     warmup_duration=datetime.timedelta(seconds=15),
                     warmup_timeout=datetime.timedelta(seconds=30),
-                    warmup_sleep=datetime.timedelta(seconds=1),
+                    warmup_sleep=datetime.timedelta(seconds=5),
                     # Need a large lag in order for Prometheus to initialize correctly
                     client_lag=datetime.timedelta(seconds=10),
                     log_level=self.args()['log_level'],
@@ -43,26 +39,32 @@ def main(args) -> None:
                     prometheus_scrape_interval=datetime.timedelta(
                         milliseconds=200),
                 )
-
-
-            return [
-                gen_input(client_procs, replica_groups, replica_partitions, collectors, broadcasters, leader_flush_every_n)
-
-                for client_procs in [25, 50, 75, 125, 175, 250, 400]
-                for replica_groups in [7]
-                for replica_partitions in [1,3]
-                for collectors in [1,3]
-                for broadcasters in [1,3]
-                for leader_flush_every_n in [15]
+                # for client_procs in [1, 10, 25, 40, 50, 60, 75, 100, 125, 150, 175]
+                # for num_replicas in [3, 5]
+                for (num_client_procs, num_clients_per_proc) in [
+                    (1, 10),
+                    (1, 25),
+                    (1, 50),
+                    (1, 100),
+                    (2, 100),
+                    (3, 100),
+                    (4, 100),
+                    (5, 100),
+                    (6, 100),
+                    (7, 100),
+                    (8, 100),
+                    (9, 100),
+                    (10, 100),
+                ]
+                for num_replicas in [7]
+                for leader_flush_every_n in [1] #[15,1]
             ]#*3
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
+                'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
-                'num_replica_groups': input.num_replica_groups,
-                'num_replica_partitions': input.num_replica_partitions,
-                'num_broadcasters': input.num_broadcasters,
-                'num_collectors': input.num_collectors,
+                'num_replicas': input.num_replicas,
                 'leader_flush_every_n': input.leader_flush_every_n,
                 'latency.median_ms': output.latency.median_ms,
                 'start_throughput_1s.p90': output.start_throughput_1s.p90,
@@ -71,7 +73,7 @@ def main(args) -> None:
 
     suite = Suite(args)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'autovoting_lt_dedalus') as dir:
+                                  'voting_lt_dedalus') as dir:
         suite.run_suite(dir)
 
 

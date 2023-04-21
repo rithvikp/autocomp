@@ -14,7 +14,7 @@ def main(args) -> None:
                 '1': {
                     'leaders': 2,
                     'replicas': 3, # Max across any benchmark
-                    'clients': 2, # Max across any benchmark
+                    'clients': 10, # Max across any benchmark
                     'acceptors': 3, # Max across any benchmark
                 },
             }
@@ -32,12 +32,12 @@ def main(args) -> None:
                     client_jvm_heap_size = '8g',
                     replica_jvm_heap_size = '12g',
                     measurement_group_size = 10,
-                    warmup_duration = datetime.timedelta(seconds=10),
-                    warmup_timeout = datetime.timedelta(seconds=15),
+                    warmup_duration = datetime.timedelta(seconds=25),
+                    warmup_timeout = datetime.timedelta(seconds=30),
                     warmup_sleep = datetime.timedelta(seconds=5),
-                    duration = datetime.timedelta(seconds=15),
-                    timeout = datetime.timedelta(seconds=20),
-                    client_lag = datetime.timedelta(seconds=10),
+                    duration = datetime.timedelta(seconds=60),
+                    timeout = datetime.timedelta(seconds=65),
+                    client_lag = datetime.timedelta(seconds=5),
                     state_machine = 'KeyValueStore',
                     predetermined_read_fraction = -1,
                     workload_label = 'write_only',
@@ -104,9 +104,8 @@ def main(args) -> None:
 
                 for value_size in [16]
                 for num_acceptors in [3]
-                for num_replicas in [2]
+                for num_replicas in [3]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
-                    (1, 1, 1),
                     (1, 50, 10),
                     (1, 100, 10),
                     (2, 100, 10),
@@ -118,8 +117,39 @@ def main(args) -> None:
                     (8, 100, 10),
                     (9, 100, 10),
                     (10, 100, 10),
+
+                    # (1, 1, 1),
+                    # (1, 25, 1),
+                    # (1, 50, 10),
+                    # (1,75,10),
+                    # (1, 100, 10),
+                    # (1, 150, 10),
+                    # (2, 50, 10),
+                    # (2,75,10),
+                    # (2, 100, 10),
+                    # (2, 150, 10),
+                    # (3, 50, 10),
+                    # (3,75,10),
+                    # (3, 100, 10),
+                    # (3, 150, 10),
+                    # (4, 50, 10),
+                    # (4,75,10),
+                    # (4, 100, 10),
+                    # (4, 150, 10),
+                    # (5, 50, 10),
+                    # (5, 100, 10),
+                    # (5, 150, 10),
+                    # (6, 50, 10),
+                    # (6, 100, 10),
+                    # (6,150,10),
+                    # (7, 50, 10),
+                    # (7, 100, 10),
+                    # (7,150,10),
+                    # (8, 100, 10),
+                    # (9, 100, 10),
+                    # (10, 100, 10),
                 ]
-            ] #* 5
+            ]
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
