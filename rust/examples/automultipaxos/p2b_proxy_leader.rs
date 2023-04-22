@@ -49,21 +49,21 @@ fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
 
 pub async fn run(cfg: P2bProxyLeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let p2b_source = ports
-        .remove("p2b")
+        .remove("receive_from$acceptors$0")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let p2b_to_proposer_sink = ports
-        .remove("p2b_to_proposer")
+        .remove("send_to$leaders$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await
         .into_sink();
 
     let inputs_sink = ports
-        .remove("inputs")
+        .remove("send_to$leaders$1")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await

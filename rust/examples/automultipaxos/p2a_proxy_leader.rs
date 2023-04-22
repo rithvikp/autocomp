@@ -21,14 +21,14 @@ pub struct P2aProxyLeaderArgs {
 pub async fn run(cfg: P2aProxyLeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let mut ports = hydroflow::util::cli::init().await;
     let p2a_source = ports
-        .remove("p2a_to_proxy")
+        .remove("receive_from$leaders$0")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let p2a_port = ports
-        .remove("p2a_from_proxy")
+        .remove("send_to$acceptors$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;

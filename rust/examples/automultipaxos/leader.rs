@@ -11,7 +11,7 @@ use hydroflow::util::{
 use hydroflow_datalog::datalog;
 use prost::Message;
 use std::rc::Rc;
-use std::{collections::HashMap, convert::TryFrom, io::Cursor};
+use std::{collections::HashMap, io::Cursor};
 
 #[derive(clap::Args, Debug)]
 pub struct LeaderArgs {
@@ -73,7 +73,7 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,)> {
 
 pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let p1a_port = ports
-        .remove("p1a")
+        .remove("send_to$acceptors$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
@@ -83,21 +83,21 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let p1a_sink = p1a_port.into_sink();
 
     let p1b_source = ports
-        .remove("p1b")
+        .remove("receive_from$acceptors$0")
         .unwrap()
-        .connect::<ConnectedBidi>()
+        .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let p1b_log_source = ports
-        .remove("p1b_log")
+        .remove("receive_from$acceptors$1")
         .unwrap()
-        .connect::<ConnectedBidi>()
+        .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let p2a_port = ports
-        .remove("p2a")
+        .remove("send_to$p2a_proxy_leaders$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
@@ -107,21 +107,21 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let p2a_sink = p2a_port.into_sink();
 
     let p2b_source = ports
-        .remove("p2b")
+        .remove("receive_from$p2b_proxy_leaders$0")
         .unwrap()
-        .connect::<ConnectedBidi>()
+        .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let inputs_source = ports
-        .remove("inputs")
+        .remove("receive_from$p2b_proxy_leaders$1")
         .unwrap()
-        .connect::<ConnectedBidi>()
+        .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let i_am_leader_port = ports
-        .remove("i_am_leader_sink")
+        .remove("send_to$leaders$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
@@ -131,9 +131,9 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let i_am_leader_sink = i_am_leader_port.into_sink();
 
     let i_am_leader_source = ports
-        .remove("i_am_leader_source")
+        .remove("receive_from$leaders$0")
         .unwrap()
-        .connect::<ConnectedBidi>()
+        .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
@@ -192,22 +192,22 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 # p1a: proposerID, ballotID, ballotNum
 .async p1a `map(|(node_id, v):(u32,(u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p1a_sink)` `null::<(u32,u32,u32)>()` 
 # p1b: partitionID, acceptorID, logSize, ballotID, ballotNum, maxBallotID, maxBallotNum
-.async p1bU `null::<(u32,u32,u32,u32,u32,u32,u32,)>()` `source_stream(p1b_source) -> map(|v: Result<BytesMut, _>| deserialize_from_bytes::<(u32,u32,u32,u32,u32,u32,u32,)>(v.unwrap()).unwrap())`
+.async p1bU `null::<(u32,u32,u32,u32,u32,u32,u32,)>()` `source_stream(p1b_source) -> map(|v| deserialize_from_bytes::<(u32,u32,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 # p1bLog: partitionID, acceptorID, payload, slot, payloadBallotID, payloadBallotNum, ballotID, ballotNum
-.async p1bLogU `null::<(u32,u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)>()` `source_stream(p1b_log_source) -> map(|v: Result<BytesMut, _>| deserialize_from_bytes::<(u32,u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)>(v.unwrap()).unwrap())`
+.async p1bLogU `null::<(u32,u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)>()` `source_stream(p1b_log_source) -> map(|v| deserialize_from_bytes::<(u32,u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 # p2a: proposerID, payload, slot, ballotID, ballotNum
 .async p2a `map(|(node_id, v):(u32,(u32,Rc<Vec<u8>>,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p2a_sink)` `null::<(u32,Rc<Vec<u8>>,u32,u32,u32)>()` 
 # p2bU: maxBallotID, maxBallotNum, t1
-.async p2bU `null::<(u32,u32,u32)>()` `source_stream(p2b_source) -> map(|v: Result<BytesMut, _>| deserialize_from_bytes::<(u32,u32,u32)>(v.unwrap()).unwrap())`
+.async p2bU `null::<(u32,u32,u32)>()` `source_stream(p2b_source) -> map(|v| deserialize_from_bytes::<(u32,u32,u32)>(v.unwrap().1).unwrap())`
 # inputs: n, t1, prevT
-.async inputsU `null::<(u32,u32,u32)>()` `source_stream(inputs_source) -> map(|v: Result<BytesMut, _>| deserialize_from_bytes::<(u32,u32,u32)>(v.unwrap()).unwrap())`
+.async inputsU `null::<(u32,u32,u32)>()` `source_stream(inputs_source) -> map(|v| deserialize_from_bytes::<(u32,u32,u32)>(v.unwrap().1).unwrap())`
 
 .input p1aTimeout `source_stream(p1a_timeout) -> map(|_| () )` # periodic timer to send p1a, so proposers each send at random times to avoid contention
 .input iAmLeaderResendTimeout `source_stream(i_am_leader_resend_timeout) -> map(|_| () )` # periodic timer to resend iAmLeader
 .input iAmLeaderCheckTimeout `source_stream(i_am_leader_check_timeout) -> map(|_| () )` # periodic timer to check if the leader has sent a heartbeat
 // .input currTime `repeat_iter(vec![()]) -> map(|_| (SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32,))` # wall-clock time
 # iAmLeader: ballotID, ballotNum. Note: this is both a source and a sink
-.async iAmLeaderU `map(|(node_id, v):(u32,(u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(i_am_leader_sink)` `source_stream(i_am_leader_source) -> map(|v: Result<BytesMut, _>| deserialize_from_bytes::<(u32,u32,)>(v.unwrap()).unwrap())`
+.async iAmLeaderU `map(|(node_id, v):(u32,(u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(i_am_leader_sink)` `source_stream(i_am_leader_source) -> map(|v| deserialize_from_bytes::<(u32,u32,)>(v.unwrap().1).unwrap())`
 ######################## end relation definitions
 
 

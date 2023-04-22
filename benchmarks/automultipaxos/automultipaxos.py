@@ -286,8 +286,11 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
         bench.log("Reconfiguring the system for a new benchmark")
         endpoints, receive_endpoints = self.provisioner.rebuild(1, {
             "clients": ["leaders"],
-            "leaders": ["acceptors", "acceptors", "leaders", "replicas"],
-            "acceptors": ["leaders", "leaders", "leaders"],
+            "leaders": ["p2a_proxy_leaders", "acceptors", "leaders"],
+            "p2a_proxy_leaders": ["acceptors"],
+            "p2b_proxy_leaders": ["leaders", "leaders", "replicas"],
+            "coordinators": ["acceptors"],
+            "acceptors": ["p2b_proxy_leaders", "coordinators", "leaders", "leaders"],
             "replicas": ["clients"],
         },
         {

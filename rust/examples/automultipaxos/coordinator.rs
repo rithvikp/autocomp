@@ -1,4 +1,3 @@
-use hydroflow::bytes::BytesMut;
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
@@ -22,14 +21,14 @@ pub async fn run(cfg: CoordinatorArgs, mut ports: HashMap<String, ServerOrBound>
     let mut ports = hydroflow::util::cli::init().await;
 
     let p1a_vote_source = ports
-        .remove("p1a_vote")
+        .remove("receive_from$acceptors$0")
         .unwrap()
-        .connect::<ConnectedBidi>()
+        .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let p1a_commit_port = ports
-        .remove("p1a_commit")
+        .remove("send_to$acceptors$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
@@ -60,7 +59,7 @@ pub async fn run(cfg: CoordinatorArgs, mut ports: HashMap<String, ServerOrBound>
 .output p1aCommitOut `for_each(|(i, aid, o, pid, ballot_id, ballot_num):(u32,u32,u32,u32,u32,u32,)| println!("coordinator {:?} sent p1aVote to acceptor {:?}: [{:?},{:?},{:?},{:?}]]", i, aid, o, pid, ballot_id, ballot_num))`
 
 # p1aVote: acceptorPartitionID, proposerID, ballotID, ballotNum
-.async p1aVoteU `null::<(u32,u32,u32,u32,)>()` `source_stream(p1a_vote_source) -> map(|v: Result<BytesMut, _>| deserialize_from_bytes::<(u32,u32,u32,u32,)>(v.unwrap()).unwrap())`
+.async p1aVoteU `null::<(u32,u32,u32,u32,)>()` `source_stream(p1a_vote_source) -> map(|v| deserialize_from_bytes::<(u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
 # p1aCommit: order, proposerID, ballotID, ballotNum
 .async p1aCommit `map(|(node_id, v):(u32,(u32,u32,u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(p1a_commit_sink)` `null::<(u32,u32,u32,u32)>()`
 ######################## end relation definitions

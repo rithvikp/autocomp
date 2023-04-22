@@ -27,35 +27,35 @@ pub struct AcceptorArgs {
 
 pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
     let p1a_source = ports
-        .remove("p1a")
+        .remove("receive_from$leaders$0")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let p1b_sink = ports
-        .remove("p1b")
+        .remove("send_to$leaders$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await
         .into_sink();
 
     let p1b_log_sink = ports
-        .remove("p1b_log")
+        .remove("send_to$leaders$1")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await
         .into_sink();
 
     let p2a_source = ports
-        .remove("p2a")
+        .remove("receive_from$p2a_proxy_leaders$0")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
 
     let p2b_ports = ports
-        .remove("p2b")
+        .remove("send_to$p2b_proxy_leaders$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
@@ -64,7 +64,7 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
     let p2b_sink = p2b_ports.into_sink();
 
     let p1a_vote_ports = ports
-        .remove("p1a_vote")
+        .remove("send_to$coordinators$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
@@ -73,7 +73,7 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
     let p1a_vote_sink = p1a_vote_ports.into_sink();
 
     let p1a_commit_source = ports
-        .remove("p1a_commit")
+        .remove("receive_from$coordinators$0")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
