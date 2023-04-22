@@ -11,11 +11,15 @@ def main(args) -> None:
 
         def cluster_spec(self) -> Dict[str, Dict[str, int]]:
             return {
+                # Max across any benchmark
                 '1': {
                     'leaders': 2,
-                    'replicas': 3, # Max across any benchmark
-                    'clients': 10, # Max across any benchmark
-                    'acceptors': 3, # Max across any benchmark
+                    'replicas': 3,
+                    'clients': 10,
+                    'acceptors': 3,
+                    'coordinators': 3,
+                    'p2a_proxy_leaders': 3*2,
+                    'p2b_proxy_leaders': 3*2,
                 },
             }
 
@@ -27,7 +31,8 @@ def main(args) -> None:
                     num_warmup_clients_per_proc = num_clients_per_proc,
                     num_clients_per_proc = num_clients_per_proc,
                     num_leaders = 2,
-                    num_acceptors = num_acceptors,
+                    num_acceptors_per_partition = num_acceptors_per_partition,
+                    num_acceptor_partitions = num_acceptor_partitions,
                     num_replicas = num_replicas,
                     num_p2a_proxy_leaders_per_leader = num_p2a_proxy_leaders_per_leader, num_p2b_proxy_leaders_per_leader = num_p2b_proxy_leaders_per_leader,
                     client_jvm_heap_size = '8g',
@@ -104,9 +109,10 @@ def main(args) -> None:
 
 
                 for value_size in [16]
-                for num_acceptors in [3]
+                for num_acceptors_per_partition in [3]
+                for num_acceptor_partitions in [1]
                 for num_replicas in [3]
-                for num_p2a_proxy_leaders_per_leader in [1]
+                for num_p2a_proxy_leaders_per_leader in [3]
                 for num_p2b_proxy_leaders_per_leader in [1]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
                     (1, 50, 10),
@@ -129,7 +135,8 @@ def main(args) -> None:
                 'value_size': input.workload,
                 'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
-                'num_acceptors': input.num_acceptors,
+                'num_acceptors_per_partition': input.num_acceptors_per_partition,
+                'num_acceptor_partitions': input.num_acceptor_partitions,
                 'num_replicas': input.num_replicas,
                 'leader_flush_every_n': input.leader_options.flush_every_n,
                 'write.latency.median_ms': f'{output.write_output.latency.median_ms:.6}',

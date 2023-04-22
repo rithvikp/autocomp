@@ -1,6 +1,4 @@
 use frankenpaxos::multipaxos_proto;
-use hydroflow::bytes::BytesMut;
-use hydroflow::tokio_stream::wrappers::IntervalStream;
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
@@ -15,10 +13,10 @@ use std::{collections::HashMap, convert::TryFrom, io::Cursor};
 
 #[derive(clap::Args, Debug)]
 pub struct P2bProxyLeaderArgs {
-    #[clap(long = "p2b_proxy_leader.index")]
+    #[clap(long = "p2b-proxy-leader.index")]
     p2b_proxy_leader_index: Option<u32>,
 
-    #[clap(long = "p2b_proxy_leader.f")]
+    #[clap(long = "p2b-proxy-leader.f")]
     f: Option<u32>,
 
     #[clap(long = "p2b-proxy-leader.num-acceptor-partitions")]
@@ -106,7 +104,9 @@ pub async fn run(cfg: P2bProxyLeaderArgs, mut ports: HashMap<String, ServerOrBou
 .output p2bOut `for_each(|(i,a,payload,slot,id,num,max_id,max_num):(u32,u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)| println!("p2bProxyLeader {:?} received p2b from acceptor: [{:?},{:?},{:?},{:?},{:?},{:?},{:?}]]", i, a, payload, slot, id, num, max_id, max_num))`
 .output p2bToProposerOut `for_each(|(i,pid,max_id,max_num,t1):(u32,u32,u32,u32,u32,)| println!("p2bProxyLeader {:?} sent p2b to proposer {:?}: [{:?},{:?},{:?}]]", i, pid, max_id, max_num, t1))`
 .output p2bToProposerOut `for_each(|(i,pid,n,t1,prev_t):(u32,u32,u32,u32,u32,)| println!("p2bProxyLeader {:?} sent inputs to proposer {:?}: [{:?},{:?},{:?}]]", i, pid, n, t1, prev_t))`
-.output throughputOut `for_each(|(id,num,n):(u32,u32,u32)| println!("throughput,{:?},{:?}", id, num * n))`
+
+.output allCommitOut `for_each(|(slot, payload,): (u32, Rc<Vec<u8>>,)| println!("p2bProxyLeader {:?} received allCommit for slot {:?}: {:?}", my_id, slot, payload))`
+
 
 # p2b: acceptorID, payload, slot, ballotID, ballotNum, maxBallotID, maxBallotNum
 .async p2bU `null::<(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32)>()` `source_stream(p2b_source) -> map(|v| deserialize_from_bytes::<(u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32,)>(v.unwrap().1).unwrap())`
@@ -146,7 +146,7 @@ CountMatchingP2bs(payload, slot, count(acceptorID), i, num) :- p2b(acceptorID, p
 commit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), quorum(size), (c >= size)
 allCommit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), fullQuorum(c)
 clientOut@r(payload, slot) :~ allCommit(payload, slot), replicas(r)
-MaxCommits(max(slot)) :- commit(payload, slot)
+commitOut(payload, slot) :- allCommit(payload, slot)
 "#
     );
 

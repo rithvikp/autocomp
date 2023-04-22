@@ -13,13 +13,11 @@ pub struct CoordinatorArgs {
     #[clap(long = "coordinator.index")]
     coordinator_index: Option<u32>,
 
-    #[clap(long = "coordinator.num_acceptor_partitions")]
+    #[clap(long = "coordinator.num-acceptor-partitions")]
     coordinator_num_acceptor_partitions: Option<u32>,
 }
 
 pub async fn run(cfg: CoordinatorArgs, mut ports: HashMap<String, ServerOrBound>) {
-    let mut ports = hydroflow::util::cli::init().await;
-
     let p1a_vote_source = ports
         .remove("receive_from$acceptors$0")
         .unwrap()
@@ -35,7 +33,6 @@ pub async fn run(cfg: CoordinatorArgs, mut ports: HashMap<String, ServerOrBound>
 
     let mut acceptors = p1a_commit_port.keys.clone();
     acceptors.sort();
-    println!("[coordinator] acceptors: {:?}", acceptors);
     let p1a_commit_sink = p1a_commit_port.into_sink();
 
     let my_id = cfg.coordinator_index.unwrap();

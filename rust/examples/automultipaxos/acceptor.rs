@@ -1,4 +1,3 @@
-use hydroflow::bytes::BytesMut;
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
@@ -15,13 +14,13 @@ pub struct AcceptorArgs {
     #[clap(long = "acceptor.index")]
     acceptor_index: Option<u32>,
 
-    #[clap(long = "acceptor.coordinator_index")]
+    #[clap(long = "acceptor.coordinator-index")]
     acceptor_coordinator_index: Option<u32>,
 
-    #[clap(long = "acceptor.partition_index")]
+    #[clap(long = "acceptor.partition-index")]
     acceptor_partition_index: Option<u32>,
 
-    #[clap(long = "acceptor.num_p2b_proxy_leaders")]
+    #[clap(long = "acceptor.num-p2b-proxy-leaders")]
     acceptor_num_p2b_proxy_leaders: Option<u32>,
 }
 
@@ -59,8 +58,6 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
-    let p2b_proxy_leaders = p2b_ports.keys.clone();
-    println!("p2b_proxy_leaders: {:?}", p2b_proxy_leaders);
     let p2b_sink = p2b_ports.into_sink();
 
     let p1a_vote_ports = ports
@@ -68,8 +65,6 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
-    let coordinators = p1a_vote_ports.keys.clone();
-    println!("coordinators: {:?}", coordinators);
     let p1a_vote_sink = p1a_vote_ports.into_sink();
 
     let p1a_commit_source = ports

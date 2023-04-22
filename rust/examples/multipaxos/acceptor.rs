@@ -24,7 +24,7 @@ pub async fn run(cfg: AcceptorArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await
         .into_source();
 
-    let p1b = ports
+    let p1b_sink = ports
         .remove("send_to$leaders$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()

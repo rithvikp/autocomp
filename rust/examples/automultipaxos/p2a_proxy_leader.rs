@@ -19,7 +19,6 @@ pub struct P2aProxyLeaderArgs {
 }
 
 pub async fn run(cfg: P2aProxyLeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
-    let mut ports = hydroflow::util::cli::init().await;
     let p2a_source = ports
         .remove("receive_from$leaders$0")
         .unwrap()
@@ -34,7 +33,6 @@ pub async fn run(cfg: P2aProxyLeaderArgs, mut ports: HashMap<String, ServerOrBou
         .await;
 
     let acceptors = p2a_port.keys.clone();
-    println!("[p2aProxyLeader] acceptors: {:?}", acceptors);
     let p2a_sink = p2a_port.into_sink();
 
     let my_id = cfg.p2a_proxy_leader_index.unwrap();

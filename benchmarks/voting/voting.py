@@ -264,7 +264,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
         time.sleep(inp.client_lag.total_seconds())
         bench.log('Client lag ended.')
 
-        # Launch the client
+        # Launch clients
         client_procs: List[proc.Proc] = []
         for i in range(inp.num_client_procs):
             client = net.placement(index=i).clients[i]
@@ -317,7 +317,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
 
         bench.log(f'Clients started and running for {inp.duration}.')
 
-        # Wait for the client to finish and then terminate the server.
+        # Wait for the clients to finish and then terminate the server.
         for p in client_procs:
             p.wait()
 

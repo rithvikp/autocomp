@@ -11,7 +11,7 @@ enum Service {
     Acceptor,
     Coordinator,
     P2aProxyLeader,
-    P2bProxyleader,
+    P2bProxyLeader,
 }
 
 #[derive(Parser, Debug)]
@@ -51,6 +51,6 @@ async fn main() {
         Service::Acceptor => acceptor::run(args.acceptor, ports).await,
         Service::Coordinator => coordinator::run(args.coordinator, ports).await,
         Service::P2aProxyLeader => p2a_proxy_leader::run(args.p2a_proxy_leader, ports).await,
-        Service::P2bProxyleader => p2b_proxy_leader::run(args.p2b_proxy_leader, ports).await,
+        Service::P2bProxyLeader => p2b_proxy_leader::run(args.p2b_proxy_leader, ports).await,
     };
 }

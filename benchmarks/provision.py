@@ -61,7 +61,8 @@ class EndpointProvider:
 
     def _get_single(self, receiver_index: int) -> host.PartialEndpoint:
         if self._endpoints_set is not None:
-            assert len(self._endpoints_set) == 1
+            if len(self._endpoints_set) != 1:
+                raise Exception(f"Expected only one sender; found {len(self._endpoints_set)}. Make sure to set sender=-1 when in prom_placement.")
             return self._endpoints_set[0][receiver_index]
         return self._endpoints[receiver_index]
 
@@ -114,7 +115,7 @@ class State:
     def post_benchmark(self):
         pass
 
-    def rebuild(self, f: int, connections: Dict[str, List[str]]) -> Tuple[Dict[str, EndpointProvider], List[List[host.Endpoint]]]:
+    def rebuild(self, f: int, connections: Dict[str, List[str]], custom_service_counts: Dict[str, int]) -> Tuple[Dict[str, EndpointProvider], List[List[host.Endpoint]]]:
         raise NotImplementedError()
 
     def stop(self):
@@ -311,7 +312,7 @@ class HydroState(State):
         return clusters
     
     def _parse_label(self, label: str) -> Tuple[str, int]:
-        decomposed_label = re.match(r"([a-zA-Z0-9]+)_([0-9]+)", label)
+        decomposed_label = re.match(r"([a-zA-Z0-9_]+)_([0-9]+)", label)
         if decomposed_label is None:
             decomposed_label = re.match(r"([a-zA-Z0-9]+)", label)
             assert decomposed_label is not None, "The provided label was invalid. Check the comment in provision.py"
@@ -320,8 +321,8 @@ class HydroState(State):
             index = int(decomposed_label[2])
         role = decomposed_label[1]
 
-        assert index not in self._service_exists[role], (f"The same label ({label}) was provisioned twice. Are your labels of "+
-            "the form `role_index`?")
+        if index in self._service_exists[role]:
+            raise ValueError(f"The same label {label} was provisioned twice. Are your labels of the form `role_index`?")
         self._service_exists[role].add(index)
 
         return role, index

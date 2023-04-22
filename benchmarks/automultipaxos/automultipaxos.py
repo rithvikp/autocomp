@@ -73,7 +73,8 @@ class Input(NamedTuple):
     num_warmup_clients_per_proc: int
     num_clients_per_proc: int
     num_leaders: int
-    num_acceptors: int
+    num_acceptors_per_partition: int
+    num_acceptor_partitions: int
     num_replicas: int
     num_p2a_proxy_leaders_per_leader: int
     num_p2b_proxy_leaders_per_leader: int
@@ -133,6 +134,7 @@ class AutoMultiPaxosNet:
         leaders: List[host.Endpoint]
         acceptors: List[host.Endpoint]
         replicas: List[host.Endpoint]
+        coordinators: List[host.Endpoint]
         p2a_proxy_leaders: List[host.Endpoint]
         p2b_proxy_leaders: List[host.Endpoint]
 
@@ -148,8 +150,9 @@ class AutoMultiPaxosNet:
         return self.Placement(
             clients=portify('clients', self._input.num_client_procs),
             leaders=portify('leaders', self._input.num_leaders),
-            acceptors=portify('acceptors', self._input.num_acceptors),
+            acceptors=portify('acceptors', self._input.num_acceptors_per_partition*self._input.num_acceptor_partitions),
             replicas=portify('replicas', self._input.num_replicas),
+            coordinators=portify('coordinators', self._input.num_acceptors_per_partition),
             p2a_proxy_leaders=portify('p2a_proxy_leaders', self._input.num_p2a_proxy_leaders_per_leader * self._input.num_leaders),
             p2b_proxy_leaders=portify('p2b_proxy_leaders', self._input.num_p2b_proxy_leaders_per_leader * self._input.num_leaders),
         )
@@ -168,8 +171,9 @@ class AutoMultiPaxosNet:
         return self.Placement(
             clients=portify('clients', self._input.num_client_procs),
             leaders=portify('leaders', self._input.num_leaders),
-            acceptors=portify('acceptors', self._input.num_acceptors),
+            acceptors=portify('acceptors', self._input.num_acceptors_per_partition*self._input.num_acceptor_partitions),
             replicas=portify('replicas', self._input.num_replicas),
+            coordinators=portify('coordinators', self._input.num_acceptors_per_partition),
             p2a_proxy_leaders=portify('p2a_proxy_leaders', self._input.num_p2a_proxy_leaders_per_leader * self._input.num_leaders),
             p2b_proxy_leaders=portify('p2b_proxy_leaders', self._input.num_p2b_proxy_leaders_per_leader * self._input.num_leaders),
         )
@@ -195,8 +199,8 @@ class AutoMultiPaxosNet:
                 'acceptor_address': [{
                     'host': e.host.ip(),
                     'port': e.port
-                } for e in self.placement(index=index).acceptors]
-            }],
+                } for e in self.placement(index=index).acceptors[i*self._input.num_acceptors_per_partition:(i+1)*self._input.num_acceptors_per_partition]]
+            } for i in range(self._input.num_acceptor_partitions)],
             'replica_address': [{
                 'host': e.host.ip(),
                 'port': e.port
@@ -213,23 +217,31 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
                       bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any],
                       input: Input) -> Output:
-        assert input.f*2 + 1 == input.num_acceptors
+        assert input.f*2 + 1 == input.num_acceptors_per_partition
         net = AutoMultiPaxosNet(input, self.provisioner.hosts(input.f))
 
         # Launch acceptors.
         if self.service_type("acceptors") == "hydroflow":
             acceptor_procs: List[proc.Proc] = []
-            for (i, acceptor) in enumerate(net.prom_placement().acceptors):
-                acceptor_procs.append(self.provisioner.popen_hydroflow(bench, f'acceptors_{i}', input.f, [
-                    '--service',
-                    'acceptor',
-                    '--acceptor.index',
-                    str(i),
-                    '--prometheus-host',
-                    acceptor.host.ip(),
-                    '--prometheus-port',
-                    str(acceptor.port),
-                ]))
+            for i in range(input.num_acceptors_per_partition):
+                for (j, acceptor) in enumerate(net.prom_placement().acceptors[i*input.num_acceptor_partitions:(i+1)*input.num_acceptor_partitions]):
+                    index = i*input.num_acceptor_partitions + j
+                    acceptor_procs.append(self.provisioner.popen_hydroflow(bench, f'acceptors_{index}', input.f, [
+                        '--service',
+                        'acceptor',
+                        '--acceptor.index',
+                        str(i),
+                        '--acceptor.coordinator-index',
+                        str(i),
+                        '--acceptor.partition-index',
+                        str(index),
+                        '--acceptor.num-p2b-proxy-leaders',
+                        str(input.num_p2b_proxy_leaders_per_leader),
+                        '--prometheus-host',
+                        acceptor.host.ip(),
+                        '--prometheus-port',
+                        str(acceptor.port),
+                    ]))
         else:
             raise ValueError("AutoMultiPaxos only supports hydroflow acceptors")
 
@@ -252,10 +264,30 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
                 str(i),
                 '--leader.f',
                 str(input.f),
+                '--leader.num-acceptor-partitions',
+                str(input.num_acceptor_partitions),
+                '--leader.num-p2a-proxy-leaders-per-leader',
+                str(input.num_p2a_proxy_leaders_per_leader),
                 '--prometheus-host',
                 leader.host.ip(),
                 '--prometheus-port',
                 str(leader.port)
+            ]))
+
+        # Launch coordinators
+        coordinator_procs: List[proc.Proc] = []
+        for (i, coordinator) in enumerate(net.prom_placement().coordinators):
+            coordinator_procs.append(self.provisioner.popen_hydroflow(bench, f'coordinators_{i}', input.f, [
+                '--service',
+                'coordinator',
+                '--coordinator.index',
+                str(i),
+                '--coordinator.num-acceptor-partitions',
+                str(input.num_acceptor_partitions),
+                '--prometheus-host',
+                coordinator.host.ip(),
+                '--prometheus-port',
+                str(coordinator.port)
             ]))
         
         # Launch p2a proxy leaders
@@ -263,7 +295,11 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
         for (i, proxy_leader) in enumerate(net.prom_placement().p2a_proxy_leaders):
             p2a_proxy_leader_procs.append(self.provisioner.popen_hydroflow(bench, f'p2a_proxy_leaders_{i}', input.f, [
                 '--service',
-                'p2a_proxy_leader',
+                'p2a-proxy-leader',
+                '--p2a-proxy-leader.index',
+                str(i),
+                '--p2a-proxy-leader.num-acceptor-partitions',
+                str(input.num_acceptor_partitions),
                 '--prometheus-host',
                 proxy_leader.host.ip(),
                 '--prometheus-port',
@@ -275,7 +311,15 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
         for (i, proxy_leader) in enumerate(net.prom_placement().p2b_proxy_leaders):
             p2b_proxy_leader_procs.append(self.provisioner.popen_hydroflow(bench, f'p2b_proxy_leaders_{i}', input.f, [
                 '--service',
-                'p2b_proxy_leader',
+                'p2b-proxy-leader',
+                '--p2b-proxy-leader.index',
+                str(i),
+                '--p2b-proxy-leader.f',
+                str(input.f),
+                '--p2b-proxy-leader.num-acceptor-partitions',
+                str(input.num_acceptor_partitions),
+                '--p2b-proxy-leader.num-acceptors',
+                str(input.num_acceptors_per_partition*input.num_acceptor_partitions),
                 '--prometheus-host',
                 proxy_leader.host.ip(),
                 '--prometheus-port',
@@ -381,21 +425,33 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
         if input.monitored:
             prometheus_config = prometheus.prometheus_config(
                 int(input.prometheus_scrape_interval.total_seconds() * 1000), {
-                    'multipaxos_client': [
+                    'automultipaxos_client': [
                         f'{e.host.ip()}:{e.port}'
                         for e in net.prom_placement().clients
                     ],
-                    'multipaxos_leader': [
+                    'automultipaxos_leader': [
                         f'{e.host.ip()}:{e.port}'
                         for e in net.prom_placement().leaders
                     ],
-                    'multipaxos_acceptor': [
+                    'automultipaxos_acceptor': [
                         f'{e.host.ip()}:{e.port}'
                         for e in net.prom_placement().acceptors
                     ],
-                    'multipaxos_replica': [
+                    'automultipaxos_replica': [
                         f'{e.host.ip()}:{e.port}'
                         for e in net.prom_placement().replicas
+                    ],
+                    'automultipaxos_coordinator': [
+                        f'{e.host.ip()}:{e.port}'
+                        for e in net.prom_placement().coordinators
+                    ],
+                    'automultipaxos_p2a_proxy_leader': [
+                        f'{e.host.ip()}:{e.port}'
+                        for e in net.prom_placement().p2a_proxy_leaders
+                    ],
+                    'automultipaxos_p2b_proxy_leader': [
+                        f'{e.host.ip()}:{e.port}'
+                        for e in net.prom_placement().p2b_proxy_leaders
                     ],
                 })
             bench.write_string('prometheus.yml', yaml.dump(prometheus_config))
@@ -520,7 +576,11 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
         # Wait for clients to finish and then terminate leaders and acceptors.
         for p in client_procs:
             p.wait()
-        for p in (leader_procs + acceptor_procs + replica_procs):
+        for p in (
+            leader_procs + acceptor_procs + replica_procs + 
+            coordinator_procs + p2a_proxy_leader_procs +
+            p2b_proxy_leader_procs
+        ):
             p.kill()
         if input.monitored:
             prometheus_server.kill()

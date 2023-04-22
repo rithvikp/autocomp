@@ -79,7 +79,6 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await;
 
     let acceptors = p1a_port.keys.clone();
-    println!("acceptors: {:?}", acceptors);
     let p1a_sink = p1a_port.into_sink();
 
     let p1b_source = ports
@@ -102,8 +101,6 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
 
-    let p2a_proxy_leaders = p2a_port.keys.clone();
-    println!("p2a_proxy_leaders: {:?}", p2a_proxy_leaders);
     let p2a_sink = p2a_port.into_sink();
 
     let p2b_source = ports
@@ -127,7 +124,6 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await;
 
     let proposers = i_am_leader_port.keys.clone();
-    println!("proposers: {:?}", proposers);
     let i_am_leader_sink = i_am_leader_port.into_sink();
 
     let i_am_leader_source = ports
@@ -184,7 +180,6 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 // .input clientIn `repeat_iter_external(vec![()]) -> map(|_| (context.current_tick() as u32,))`
 .async clientIn `null::<(Rc<Vec<u8>>,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1)))`
 // .input clientIn `repeat_iter_external(vec![()]) -> flat_map(|_| (0..inputs_per_tick).map(|d| ((context.current_tick() * inputs_per_tick + d) as u32,)))`
-.output clientOut `for_each(|(payload,slot):(Rc<Vec<u8>>,u32)| println!("committed {:?}: {:?}", slot, payload))`
 
 .input startBallot `repeat_iter([(0 as u32,),])`
 .input startSlot `repeat_iter([(0 as u32,),])`
@@ -259,7 +254,7 @@ LeaderExpired() :- iAmLeaderCheckTimeout(), !IsLeader(), !iAmLeader(i, n)
 p1a@a(i, i, num) :~ p1aTimeout(), LeaderExpired(), id(i), NewBallot(num), acceptors(a)
 p1a@a(i, i, num) :~ p1aTimeout(), LeaderExpired(), id(i), ballot(num), !NewBallot(newNum), acceptors(a)
 
-# ballot = max + 1. If anothe proposer sends iAmLeader, that contains its ballot, which updates our ballot (to be even higher), so we are no longer the leader (RelevantP1bs no longer relevant)
+# ballot = max + 1. If another proposer sends iAmLeader, that contains its ballot, which updates our ballot (to be even higher), so we are no longer the leader (RelevantP1bs no longer relevant)
 NewBallot(maxNum + 1) :- MaxReceivedBallot(maxId, maxNum), id(i), ballot(num), (maxNum >= num), (maxId != i)
 ballot(num) :+ NewBallot(num)
 ballot(num) :+ ballot(num), !NewBallot(newNum)
@@ -276,8 +271,9 @@ P1bAcceptorLogReceived(partitionID, acceptorID) :- P1bLogFromAcceptor(partitionI
 P1bAcceptorLogReceived(partitionID, acceptorID) :- RelevantP1bs(partitionID, acceptorID, logSize), (logSize == 0)
 P1bNumAcceptorPartitionsLogReceived(count(partitionID), acceptorID) :- P1bAcceptorLogReceived(partitionID, acceptorID)
 // .output P1bNumAcceptorPartitionsLogReceived `for_each(|(c,aid):(u32,u32)| println!("P1bNumAcceptorPartitionsLogReceived: [{:?},{:?}]", c, aid))`
-P1bNumAcceptorsLogReceived(count(acceptorID)) :- P1bNumAcceptorPartitionsLogReceived(n, acceptorID), numAcceptorGroups(n)
 // .output P1bNumAcceptorsLogReceived `for_each(|(c,):(u32,)| println!("P1bNumAcceptorsLogReceived: [{:?}]", c))`
+
+P1bNumAcceptorsLogReceived(count(acceptorID)) :- P1bNumAcceptorPartitionsLogReceived(n, acceptorID), numAcceptorGroups(n)
 IsLeader() :- P1bNumAcceptorsLogReceived(c), quorum(size), (c >= size), HasLargestBallot()
 
 P1bMatchingEntry(payload, slot, count(acceptorID), payloadBallotID, payloadBallotNum) :- RelevantP1bLogs(partitionID, acceptorID, payload, slot, payloadBallotID, payloadBallotNum)
