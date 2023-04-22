@@ -35,6 +35,17 @@ pub struct LeaderArgs {
     leader_num_p2a_proxy_leaders_per_leader: Option<u32>,
 }
 
+fn serialize_noop() -> (Rc<Vec<u8>>,) {
+    let s = multipaxos_proto::CommandBatchOrNoop {
+        value: Some(multipaxos_proto::command_batch_or_noop::Value::Noop(
+            multipaxos_proto::Noop {},
+        )),
+    };
+    let mut buf = Vec::new();
+    s.encode(&mut buf).unwrap();
+    return (Rc::new(buf),);
+}
+
 fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,)> {
     if msg.len() == 0 {
         return None;
@@ -154,7 +165,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 .input p2aProxyLeadersStartID `repeat_iter([(p2a_proxy_leaders_start_id,),])`
 .input numP2aProxyLeaders `repeat_iter([(num_p2a_proxy_leaders,),])` # ID scheme: Assuming num_p2a_proxy_leaders = n (per proposer). Proposer i has proxy leaders from i*n to (i+1)*n-1
 .input quorum `repeat_iter([(f+1,),])`
-.input noop `repeat_iter([(0 as u32,),])`
+.input noop `repeat_iter([serialize_noop(),])`
 
 # Debug
 .output p1aOut `for_each(|(a,pid,id,num):(u32,u32,u32,u32,)| println!("proposer {:?} sent p1a to acceptor {:?}: [{:?},{:?},{:?}]", pid, a, pid, id, num))`
