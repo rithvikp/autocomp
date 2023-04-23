@@ -16,13 +16,13 @@ pub struct LeaderArgs {
     flush_every_n: usize,
 }
 
-fn deserialize(msg: impl AsRef<[u8]>, vote_requests: &prometheus::Counter) -> (i64,) {
+fn deserialize(msg: impl AsRef<[u8]>, vote_requests: &prometheus::Counter) -> i64 {
     let s = voting_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
 
     match s.request.unwrap() {
         voting_proto::leader_inbound::Request::ClientRequest(r) => {
             vote_requests.inc();
-            return (r.id,);
+            return r.id;
         }
         _ => panic!("Unexpected message from the client"),
     }
@@ -64,6 +64,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await;
 
     let peers = to_replica_port.keys.clone();
+    let num_replicas = peers.len();
     let to_replica_sink = to_replica_port.into_sink();
     // let to_replica_unbatched_sink = to_replica_port.into_sink();
     // let to_replica_sink = batched_sink(
@@ -86,20 +87,20 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
 .output stdout `for_each(|s:(i64,)| println!("committed: {:?}", s))`
 .input replicas `repeat_iter(peers.clone()) -> map(|p| (p,))`
+.input numReplicas `repeat_iter([(num_replicas,),])`
 
 .async voteToReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(v))) -> dest_sink(to_replica_sink)` `null::<(u32,i64,)>()`
 .async voteFromReplica `null::<(u32,u32,i64,)>()` `source_stream(from_replica_source) -> map(|v| deserialize_from_bytes::<(u32,u32,i64,)>(v.unwrap().1).unwrap())`
 
 voteToReplica@addr(client, v) :~ clientIn(client, v), replicas(addr)
 allVotes(l, client, v) :- voteFromReplica(l, client, v)
-allVotes(l, client, v) :+ allVotes(l, client, v), !committed(v)
-valueToClient(v, client) :- allVotes(_, client, v)
-voteCounts(count(l), v) :- allVotes(l, _, v)
-numReplicas(count(addr)) :- replicas(addr)
-committed(v) :- voteCounts(n, v), numReplicas(n)
+allVotes(l, client, v) :+ allVotes(l, client, v), !committed(client, v)
+// valueToClient(v, client) :- allVotes(_, client, v)
+voteCounts(count(l), client, v) :- allVotes(l, client, v)
+committed(client, v) :- voteCounts(n, client, v), numReplicas(n)
 // stdout(v) :- committed(v)
 
-clientOut@addr(v) :~ committed(v), valueToClient(v, addr)
+clientOut@client(v) :~ committed(client, v)
     "#
     );
 

@@ -14,7 +14,7 @@ def main(args) -> None:
                 '1': {
                     'leaders': 1,
                     'replicas': 7, # Max across any benchmark
-                    'clients': 6,
+                    'clients': 10,
                 },
             }
         
@@ -26,7 +26,7 @@ def main(args) -> None:
                     num_replicas=num_replicas,
                     jvm_heap_size='100m',
                     duration=datetime.timedelta(seconds=60),
-                    timeout=datetime.timedelta(seconds=120),
+                    timeout=datetime.timedelta(seconds=65),
                     warmup_duration=datetime.timedelta(seconds=15),
                     warmup_timeout=datetime.timedelta(seconds=30),
                     warmup_sleep=datetime.timedelta(seconds=5),
@@ -42,8 +42,8 @@ def main(args) -> None:
                 # for client_procs in [1, 10, 25, 40, 50, 60, 75, 100, 125, 150, 175]
                 # for num_replicas in [3, 5]
                 for (num_client_procs, num_clients_per_proc) in [
-                    (1, 10),
-                    (1, 25),
+                    # (1, 10),
+                    # (1, 25),
                     (1, 50),
                     (1, 100),
                     (2, 100),

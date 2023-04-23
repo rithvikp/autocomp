@@ -8,7 +8,7 @@ use hydroflow::util::{
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
-use std::{collections::HashMap, convert::TryFrom, io::Cursor, time::Duration};
+use std::{collections::HashMap, convert::TryFrom, io::Cursor};
 
 #[derive(clap::Args, Debug)]
 pub struct LeaderArgs {
@@ -16,13 +16,13 @@ pub struct LeaderArgs {
     flush_every_n: usize,
 }
 
-fn deserialize(msg: impl AsRef<[u8]>, vote_requests: &prometheus::Counter) -> (i64,) {
+fn deserialize(msg: impl AsRef<[u8]>, vote_requests: &prometheus::Counter) -> i64 {
     let s = voting_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
 
     match s.request.unwrap() {
         voting_proto::leader_inbound::Request::ClientRequest(r) => {
             vote_requests.inc();
-            return (r.id,);
+            return r.id;
         }
         _ => panic!("Unexpected message from the client"),
     }
@@ -59,13 +59,13 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
     let df = datalog!(
         r#"
-.async clientIn `null::<(i64,)>()` `source_stream(client_recv) -> map(|x| deserialize(x.unwrap().1, &vote_requests))`
+.async clientIn `null::<(u32,i64,)>()` `source_stream(client_recv) -> map(|x| {let res = x.unwrap(); (res.0, deserialize(res.1, &vote_requests),)})`
 .input numBroadcasterPartitions `repeat_iter(num_broadcaster_partitions.clone()) -> map(|p| (p,))`
 
-.async toBroadcaster `map(|(node_id, v)| (u32::try_from(node_id).unwrap(), serialize_to_bytes(v))) -> dest_sink(to_broadcaster_sink)` `null::<(i64,)>()`
+.async toBroadcaster `map(|(node_id, v)| (u32::try_from(node_id).unwrap(), serialize_to_bytes(v))) -> dest_sink(to_broadcaster_sink)` `null::<(u32,i64,)>()`
 
         
-toBroadcaster@(v%n)(v) :~ clientIn(v), numBroadcasterPartitions(n)
+toBroadcaster@(v%n)(client, v) :~ clientIn(client, v), numBroadcasterPartitions(n)
     "#
     );
 

@@ -41,8 +41,8 @@ def main(args) -> None:
         # Abbreviate fields.
         for df in [dfs]:
             df['num_clients'] = df['num_client_procs'] * df['num_clients_per_proc']
-            df['throughput'] = df['write_output.start_throughput_1s.p90']
-            df['latency'] = df['write_output.latency.median_ms']
+            df['throughput'] = df['start_throughput_1s.p90']
+            df['latency'] = df['latency.median_ms']
 
         plot_lt(dfs, ax, markers[i] + "-", title)
 
@@ -53,6 +53,16 @@ def main(args) -> None:
     ax.grid()
     fig.savefig(args.output, bbox_inches='tight')
     print(f'Wrote plot to {args.output}.')
+
+# def graph_coupled(args, ax):
+#     if args.coupled_results == None:
+#         return
+#     coupled_df = pd.read_csv(args.coupled_results)
+#     for df in [coupled_df]:
+#         df['num_clients'] = df['num_client_procs'] * df['num_clients_per_proc']
+#         df['throughput'] = df['start_throughput_1s.p90']
+#         df['latency'] = df['latency.median_ms']
+#     plot_lt(coupled_df, ax, '^-', 'MultiPaxos')
 
 
 def get_parser() -> argparse.ArgumentParser:
@@ -66,6 +76,14 @@ def get_parser() -> argparse.ArgumentParser:
                         type=str,
                         help='Titles for each experiment',
                         nargs='+')
+
+    # parser.add_argument('--coupled_results',
+    #                     type=argparse.FileType('r'),
+    #                     help='Coupled Multipaxos results.csv file')
+    # parser.add_argument('--compartmentalized_results',
+    #                     type=argparse.FileType('r'),
+    #                     help='Compartmentalized Multipaxos results.csv file')
+
     parser.add_argument('--output',
                         type=str,
                         default='compartmentalized_lt.pdf',
