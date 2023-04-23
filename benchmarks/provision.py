@@ -271,6 +271,10 @@ class HydroState(State):
                         image = config["env"]["scala_image"]
                 self._machines[f][role] = []
 
+                # count is either a string (the name of the role it's co-located with) or an int (the number of machines)
+                if isinstance(count, str):
+                    continue
+
                 for i in range(count):
                     if config["env"]["cloud"] == "gcp":
                         machine = deployment.GCPComputeEngineHost(
@@ -290,6 +294,12 @@ class HydroState(State):
 
                     self._machines[f][role].append(machine)
                     last_machine = machine
+
+            # 2nd pass, since count is either a string (the name of the role it's co-located with) or an int (the number of machines)
+            for role, colocated_role in cluster.items():
+                if isinstance(colocated_role, str):
+                    for machine in self._machines[f][colocated_role]:
+                        self._machines[f][role].append(machine)
                         
         await deployment.deploy()
         await deployment.start()

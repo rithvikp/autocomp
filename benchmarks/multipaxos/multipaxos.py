@@ -247,8 +247,6 @@ class MultiPaxosNet:
         )
 
     def config(self) -> proto_util.Message:
-        proxy_leaders = self.placement().proxy_leaders if self.placement().proxy_leaders else self.placement().leaders
-        proxy_replicas = self.placement().proxy_replicas if self.placement().proxy_replicas else self.placement().replicas
 
         return {
             'f': self._input.f,
@@ -271,7 +269,7 @@ class MultiPaxosNet:
             'proxy_leader_address': [{
                 'host': e.host.ip(),
                 'port': e.port
-            } for e in proxy_leaders],
+            } for e in self.placement().proxy_leaders],
             'acceptor_address': [{
                 'acceptor_address': [{
                     'host': e.host.ip(),
@@ -285,7 +283,7 @@ class MultiPaxosNet:
             'proxy_replica_address': [{
                 'host': e.host.ip(),
                 'port': e.port
-            } for e in proxy_replicas],
+            } for e in self.placement().proxy_replicas],
             'flexible': self._input.flexible,
             'distribution_scheme': self._input.distribution_scheme,
         }

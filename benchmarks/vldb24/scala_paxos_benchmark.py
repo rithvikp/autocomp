@@ -17,10 +17,10 @@ def main(args) -> None:
                     "batchers": 0,
                     "read_batchers": 0,
                     "leaders": 2,
-                    "proxy_leaders": 0,
+                    "proxy_leaders": "leaders",
                     "acceptors": 3,
                     "replicas": 3,
-                    "proxy_replicas": 0,
+                    "proxy_replicas": "replicas",
                 }
             }
 
@@ -173,7 +173,7 @@ def main(args) -> None:
                 for value_size in [16]
                 for num_batchers in [0]
                 for batch_size in [0]
-                for num_proxy_replicas in [0]
+                for num_proxy_replicas in [3]
                 for proxy_leader_flush_every_n in [1]
                 for proxy_replica_flush_every_n in [1]
                 for num_replicas in [3]
