@@ -51,26 +51,25 @@ def main(args) -> None:
                     write_size_std=0),
             )
 
+            for replica_groups in [7]
+            for replica_partitions in [1,3]
+            for collectors in [1,3]
+            for broadcasters in [1,3]
+            for leader_flush_every_n in [15]
             for (num_client_procs, num_clients_per_proc) in [
-                (1, 10),
-                # (1, 25),
-                # (1, 50),
-                # (1, 100),
+                (1, 1),
+                (1, 50),
+                (1, 100),
                 (2, 100),
                 (3, 100),
-                # (4, 100),
-                # (5, 100),
-                # (6, 100),
-                # (7, 100),
-                # (8, 100),
-                # (9, 100),
-                # (10, 100),
+                (4, 100),
+                (5, 100),
+                (6, 100),
+                (7, 100),
+                (8, 100),
+                (9, 100),
+                (10, 100),
             ]
-            for replica_groups in [7]
-            for replica_partitions in [3]
-            for collectors in [3]
-            for broadcasters in [3]
-            for leader_flush_every_n in [15]
 
             ]#*3
 

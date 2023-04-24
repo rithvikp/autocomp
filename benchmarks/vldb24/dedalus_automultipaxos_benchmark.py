@@ -108,7 +108,6 @@ def main(args) -> None:
                     client_log_level = args.log_level,
                 )
 
-
                 for value_size in [16]
                 for num_acceptors_per_partition in [3]
                 for num_acceptor_partitions in [1,3]

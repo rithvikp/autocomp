@@ -461,7 +461,7 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
                 })
             bench.write_string('prometheus.yml', yaml.dump(prometheus_config))
             prometheus_server = bench.popen(
-                host=net.placement().clients[0].host,
+                host=host.LocalHost(),
                 label='prometheus',
                 cmd=[
                     'prometheus',
