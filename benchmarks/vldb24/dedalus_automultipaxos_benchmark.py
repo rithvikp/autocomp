@@ -111,7 +111,7 @@ def main(args) -> None:
                 for value_size in [16]
                 for num_acceptors_per_partition in [3]
                 for num_acceptor_partitions in [1,3]
-                for num_replicas in [3]
+                for num_replicas in [3,7]
                 for num_p2a_proxy_leaders_per_leader in [1,3]
                 for num_p2b_proxy_leaders_per_leader in [1,3]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [

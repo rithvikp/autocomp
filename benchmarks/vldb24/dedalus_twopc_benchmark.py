@@ -1,7 +1,7 @@
-from benchmarks.voting.voting import *
+from benchmarks.twopc.twopc import *
 
 def main(args) -> None:
-    class Suite(VotingSuite):
+    class Suite(TwoPCSuite):
         def __init__(self, args) -> None:
             self._args = args
             super().__init__()
@@ -79,7 +79,7 @@ def main(args) -> None:
 
     suite = Suite(args)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'voting_lt_dedalus') as dir:
+                                  'twopc_lt_dedalus') as dir:
         suite.run_suite(dir)
 
 
