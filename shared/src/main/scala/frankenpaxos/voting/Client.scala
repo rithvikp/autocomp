@@ -53,17 +53,17 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
-  def _request(promise: Promise[Unit]): Unit = {
+  def _request(command: Array[Byte], promise: Promise[Unit]): Unit = {
     leader.send(
-      LeaderInbound().withClientRequest(ClientRequest(id = id, clientAddress = addressAsBytes))
+      LeaderInbound().withClientRequest(ClientRequest(id = id, clientAddress = addressAsBytes, command = ByteString.copyFrom(command)))
     )
     promises(id) = promise
     id += 1
   }
 
-  def request(): Future[Unit] = {
+  def request(command: Array[Byte]): Future[Unit] = {
     val promise = Promise[Unit]()
-    transport.executionContext.execute(() => _request(promise))
+    transport.executionContext.execute(() => _request(command, promise))
     promise.future
   }
 }

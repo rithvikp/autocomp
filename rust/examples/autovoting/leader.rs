@@ -1,4 +1,5 @@
 use frankenpaxos::voting_proto;
+use hydroflow::bytes::BytesMut;
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
@@ -9,6 +10,7 @@ use hydroflow::util::{
 use hydroflow_datalog::datalog;
 use prost::Message;
 use std::{collections::HashMap, convert::TryFrom, io::Cursor};
+use std::rc::Rc;
 
 #[derive(clap::Args, Debug)]
 pub struct LeaderArgs {
@@ -16,13 +18,21 @@ pub struct LeaderArgs {
     flush_every_n: usize,
 }
 
-fn deserialize(msg: impl AsRef<[u8]>, vote_requests: &prometheus::Counter) -> i64 {
+// Returns (client_id, request_id, reply)
+fn deserialize((client_id, msg): (u32, BytesMut), vote_requests: &prometheus::Counter) -> (u32,i64,Rc<Vec<u8>>) {
     let s = voting_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
 
     match s.request.unwrap() {
         voting_proto::leader_inbound::Request::ClientRequest(r) => {
             vote_requests.inc();
-            return r.id;
+            let out = voting_proto::ClientReply {
+                id: r.id,
+                accepted: true,
+                command: r.command,
+            };
+            let mut buf = Vec::new();
+            out.encode(&mut buf).unwrap();
+            return (client_id, r.id, Rc::new(buf));
         }
         _ => panic!("Unexpected message from the client"),
     }
@@ -59,13 +69,13 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
     let df = datalog!(
         r#"
-.async clientIn `null::<(u32,i64,)>()` `source_stream(client_recv) -> map(|x| {let res = x.unwrap(); (res.0, deserialize(res.1, &vote_requests),)})`
+.async clientIn `null::<(u32,i64,Rc<Vec<u8>>,)>()` `source_stream(client_recv) -> map(|x| deserialize(x.unwrap(), &vote_requests))`
 .input numBroadcasterPartitions `repeat_iter(num_broadcaster_partitions.clone()) -> map(|p| (p,))`
 
-.async toBroadcaster `map(|(node_id, v)| (u32::try_from(node_id).unwrap(), serialize_to_bytes(v))) -> dest_sink(to_broadcaster_sink)` `null::<(u32,i64,)>()`
+.async toBroadcaster `map(|(node_id, v)| (u32::try_from(node_id).unwrap(), serialize_to_bytes(v))) -> dest_sink(to_broadcaster_sink)` `null::<(u32,i64,Rc<Vec<u8>>)>()`
 
         
-toBroadcaster@(v%n)(client, v) :~ clientIn(client, v), numBroadcasterPartitions(n)
+toBroadcaster@(id%n)(client, id, v) :~ clientIn(client, id, v), numBroadcasterPartitions(n)
     "#
     );
 

@@ -8,6 +8,7 @@ use hydroflow::util::{
     deserialize_from_bytes, serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
+use std::rc::Rc;
 
 #[derive(clap::Args, Debug)]
 pub struct ParticipantArgs {
@@ -38,10 +39,10 @@ pub async fn run(cfg: ParticipantArgs, mut ports: HashMap<String, ServerOrBound>
         r#"
 .input myID `repeat_iter(my_id.clone()) -> map(|p| (p,))`
 .input leader `repeat_iter(peers.clone()) -> map(|p| (p,))`
-.async voteToReplica `null::<(u32,i64,)>()` `source_stream(to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,i64,)>(x.unwrap().1).unwrap())`
-.async voteFromReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(v))) -> dest_sink(from_replica_sink)` `null::<(u32,u32,i64,)>()`
+.async voteToReplica `null::<(u32,i64,Rc<Vec<u8>>,)>()` `source_stream(to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,i64,Rc<Vec<u8>>,)>(x.unwrap().1).unwrap())`
+.async voteFromReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(v))) -> dest_sink(from_replica_sink)` `null::<(u32,u32,i64,Rc<Vec<u8>>,)>()`
 
-voteFromReplica@addr(i, client, v) :~ voteToReplica(client, v), leader(addr), myID(i)
+voteFromReplica@addr(i, client, id, v) :~ voteToReplica(client, id, v), leader(addr), myID(i)
         "#
     );
 

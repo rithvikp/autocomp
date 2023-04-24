@@ -16,6 +16,9 @@ pub struct P2bProxyLeaderArgs {
     #[clap(long = "p2b-proxy-leader.index")]
     p2b_proxy_leader_index: Option<u32>,
 
+    #[clap(long = "p2b-proxy-leader.leader-index")]
+    p2b_proxy_leader_leader_index: Option<u32>,
+
     #[clap(long = "p2b-proxy-leader.f")]
     f: Option<u32>,
 
@@ -72,7 +75,7 @@ pub async fn run(cfg: P2bProxyLeaderArgs, mut ports: HashMap<String, ServerOrBou
     let acceptor_start_ids: Vec<u32> = (0u32..cfg.p2b_proxy_leader_num_acceptors.unwrap())
         .step_by(num_acceptor_partitions.try_into().unwrap())
         .collect();
-    let proposer = my_id;
+    let proposer = cfg.p2b_proxy_leader_leader_index.unwrap();
     let f = cfg.f.unwrap();
 
     // Replica setup

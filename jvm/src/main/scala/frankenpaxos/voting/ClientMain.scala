@@ -19,6 +19,10 @@ import scala.concurrent.duration._
 import scala.util.Try
 import java.io.File
 import frankenpaxos.LogLevel
+import frankenpaxos.multipaxos.ReadWriteWorkload
+import frankenpaxos.multipaxos.UniformReadWriteWorkload
+import frankenpaxos.multipaxos.Write
+import frankenpaxos.multipaxos.Read
 
 object ClientMain extends App {
   case class Flags(
@@ -37,6 +41,7 @@ object ClientMain extends App {
       // Monitoring.
       prometheusHost: String = "0.0.0.0",
       prometheusPort: Int = 8009,
+      workload: ReadWriteWorkload = new UniformReadWriteWorkload(1, 1, 1, 0),
       receiveAddrs: String = ""
   )
 
@@ -59,6 +64,8 @@ object ClientMain extends App {
       .action((x, f) => f.copy(prometheusPort = x))
       .text("-1 to disable")
     opt[String]("receive_addrs").action((x, f) => f.copy(receiveAddrs = x))
+    opt[ReadWriteWorkload]("workload")
+      .action((x, f) => f.copy(workload = x))
   }
 
   val flags: Flags = parser.parse(args, Flags()) match {
@@ -93,10 +100,14 @@ object ClientMain extends App {
   val recorder =
     new BenchmarkUtil.Recorder(flags.outputFile)
 
-  def warmupRun(): Future[Unit] = {
+  def warmupRun(workload: ReadWriteWorkload): Future[Unit] = {
     implicit val context = transport.executionContext
+    val command = workload.get() match {
+      case Write(command) => command
+      case Read(command) => command
+    }
     client
-      .request()
+      .request(command)
       .transformWith({
         case scala.util.Failure(_) =>
           logger.debug("Request failed.")
@@ -107,10 +118,14 @@ object ClientMain extends App {
       })
   }
 
-  def run(): Future[Unit] = {
+  def run(workload: ReadWriteWorkload): Future[Unit] = {
     implicit val context = transport.executionContext
+    val command = workload.get() match {
+      case Write(command) => command
+      case Read(command) => command
+    }
     BenchmarkUtil
-      .timed(() => client.request())
+      .timed(() => client.request(command))
       .transformWith({
         case scala.util.Failure(_) =>
           logger.debug("Request failed.")
@@ -134,7 +149,7 @@ object ClientMain extends App {
   implicit val context = transport.executionContext
   val warmupFutures =
     for (_ <- 0 until flags.numWarmupClients)
-      yield BenchmarkUtil.runFor(() => warmupRun(), flags.warmupDuration)
+      yield BenchmarkUtil.runFor(() => warmupRun(flags.workload), flags.warmupDuration)
   try {
     logger.info("Client warmup started.")
     concurrent.Await.result(Future.sequence(warmupFutures), flags.warmupTimeout)
@@ -151,7 +166,7 @@ object ClientMain extends App {
   // Run the benchmark.
   val futures =
     for (_ <- 0 until flags.numClients)
-      yield BenchmarkUtil.runFor(() => run(), flags.duration)
+      yield BenchmarkUtil.runFor(() => run(flags.workload), flags.duration)
   try {
     logger.info("Clients started.")
     concurrent.Await.result(Future.sequence(futures), flags.timeout)

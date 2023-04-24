@@ -173,6 +173,7 @@ class AutoMultiPaxosNet:
             leaders=portify('leaders', self._input.num_leaders),
             acceptors=portify('acceptors', self._input.num_acceptors_per_partition*self._input.num_acceptor_partitions),
             replicas=portify('replicas', self._input.num_replicas),
+            # Num coordinators = num logical acceptors
             coordinators=portify('coordinators', self._input.num_acceptors_per_partition),
             p2a_proxy_leaders=portify('p2a_proxy_leaders', self._input.num_p2a_proxy_leaders_per_leader * self._input.num_leaders),
             p2b_proxy_leaders=portify('p2b_proxy_leaders', self._input.num_p2b_proxy_leaders_per_leader * self._input.num_leaders),
@@ -308,23 +309,27 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
 
         # Launch p2b proxy leaders
         p2b_proxy_leader_procs: List[proc.Proc] = []
-        for (i, proxy_leader) in enumerate(net.prom_placement().p2b_proxy_leaders):
-            p2b_proxy_leader_procs.append(self.provisioner.popen_hydroflow(bench, f'p2b_proxy_leaders_{i}', input.f, [
-                '--service',
-                'p2b-proxy-leader',
-                '--p2b-proxy-leader.index',
-                str(i),
-                '--p2b-proxy-leader.f',
-                str(input.f),
-                '--p2b-proxy-leader.num-acceptor-partitions',
-                str(input.num_acceptor_partitions),
-                '--p2b-proxy-leader.num-acceptors',
-                str(input.num_acceptors_per_partition*input.num_acceptor_partitions),
-                '--prometheus-host',
-                proxy_leader.host.ip(),
-                '--prometheus-port',
-                str(proxy_leader.port)
-            ]))
+        for i in range(input.num_leaders):
+            for (j, proxy_leader) in enumerate(net.prom_placement().p2b_proxy_leaders[i*input.num_p2b_proxy_leaders_per_leader:(i+1)*input.num_p2b_proxy_leaders_per_leader]):
+                index = i*input.num_p2b_proxy_leaders_per_leader + j
+                p2b_proxy_leader_procs.append(self.provisioner.popen_hydroflow(bench, f'p2b_proxy_leaders_{index}', input.f, [
+                    '--service',
+                    'p2b-proxy-leader',
+                    '--p2b-proxy-leader.index',
+                    str(index),
+                    '--p2b-proxy-leader.leader-index',
+                    str(i),
+                    '--p2b-proxy-leader.f',
+                    str(input.f),
+                    '--p2b-proxy-leader.num-acceptor-partitions',
+                    str(input.num_acceptor_partitions),
+                    '--p2b-proxy-leader.num-acceptors',
+                    str(input.num_acceptors_per_partition*input.num_acceptor_partitions),
+                    '--prometheus-host',
+                    proxy_leader.host.ip(),
+                    '--prometheus-port',
+                    str(proxy_leader.port)
+                ]))
 
 
         bench.log("Reconfiguring the system for a new benchmark")

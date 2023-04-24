@@ -43,7 +43,7 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
     metrics: LeaderMetrics = new LeaderMetrics(PrometheusCollectors)
 ) extends Actor(address, transport, logger) {
 
-  case class RequestId(id: Long, client: ByteString)
+  case class Request(id: Long, client: ByteString, command: ByteString)
 
   override type InboundMessage = LeaderInbound
   override def serializer = Leader.serializer
@@ -53,7 +53,7 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
       yield chan[Replica[Transport]](address, Replica.serializer)
 
   private val clients = mutable.Map[ByteString, Chan[Client[Transport]]]()
-  private val votes = mutable.Map[RequestId, Int]()
+  private val votes = mutable.Map[Request, Int]()
 
   val flushEveryN = 15
   private var numMessagesSinceLastFlush = 0
@@ -63,41 +63,42 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
       inbound: LeaderInbound
   ): Unit = {
     inbound.request match {
-      case LeaderInbound.Request.VoteReply(reply) =>
-        val requestId = RequestId(reply.id, reply.clientAddress)
-        if (!votes.contains(requestId)) {
+      case LeaderInbound.Request.VoteReply(payload) =>
+        val request = Request(payload.id, payload.clientAddress, payload.command)
+        if (!votes.contains(request)) {
           return
         }
 
-        if (reply.accepted) {
-          votes.put(requestId, votes(RequestId(reply.id, reply.clientAddress)) + 1)
-          if (votes(requestId) == replicas.size) {
-            votes.remove(requestId)
+        if (payload.accepted) {
+          votes.put(request, votes(request) + 1)
+          if (votes(request) == replicas.size) {
+            votes.remove(request)
             numMessagesSinceLastFlush += 1
-            clients(reply.clientAddress).sendNoFlush(
-              ClientReply(id = reply.id, accepted = true)
+            clients(payload.clientAddress).sendNoFlush(
+              ClientReply(id = payload.id, accepted = true, command = payload.command)
             )
           }
         } else {
-          votes.remove(requestId)
+          votes.remove(request)
           numMessagesSinceLastFlush += 1
-          clients(reply.clientAddress).sendNoFlush(
-            ClientReply(id = reply.id, accepted = false)
+          clients(payload.clientAddress).sendNoFlush(
+            ClientReply(id = payload.id, accepted = false, command = payload.command)
           )
         }
 
-      case LeaderInbound.Request.ClientRequest(request) =>
+      case LeaderInbound.Request.ClientRequest(payload) =>
+        val request = Request(payload.id, payload.clientAddress, payload.command)
         metrics.votingRequestsTotal.inc()
-        if (!clients.contains(request.clientAddress)) {
-          clients.put(request.clientAddress, chan[Client[Transport]](src, Client.serializer))
+        if (!clients.contains(payload.clientAddress)) {
+          clients.put(payload.clientAddress, chan[Client[Transport]](src, Client.serializer))
         }
 
-        votes.put(RequestId(request.id, request.clientAddress), 0)
+        votes.put(request, 0)
 
         numMessagesSinceLastFlush += replicas.length
         replicas.foreach(
           _.sendNoFlush(
-            VoteRequest(id = request.id, clientAddress = request.clientAddress)
+            VoteRequest(id = payload.id, clientAddress = payload.clientAddress, command = payload.command)
           )
         )
 

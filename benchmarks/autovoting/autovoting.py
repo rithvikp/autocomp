@@ -9,6 +9,7 @@ from .. import prometheus
 from .. import proto_util
 from .. import util
 from .. import workload
+from .. import read_write_workload
 from .. import provision
 from ..workload import Workload
 from typing import Any, Callable, Collection, Dict, List, NamedTuple, Optional
@@ -49,6 +50,7 @@ class Input(NamedTuple):
     profiled: bool
     monitored: bool
     prometheus_scrape_interval: datetime.timedelta
+    workload: read_write_workload.ReadWriteWorkload
 
 
 Output = benchmark.RecorderOutput
@@ -270,10 +272,16 @@ class AutoVotingSuite(benchmark.Suite[Input, Output]):
             )
             bench.log('Prometheus started.')
 
+        # Lag clients.
         time.sleep(inp.client_lag.total_seconds())
         bench.log('Client lag ended.')
 
-        # Launch clients
+        # Launch clients.
+        workload_filename = bench.abspath('workload.pbtxt')
+        bench.write_string(
+            workload_filename,
+            proto_util.message_to_pbtext(inp.workload.to_proto()))
+ 
         client_procs: List[proc.Proc] = []
         for i in range(inp.num_client_procs):
             client = net.placement(index=i).clients[i]
@@ -318,6 +326,8 @@ class AutoVotingSuite(benchmark.Suite[Input, Output]):
                     inp.log_level,
                     '--receive_addrs',
                     ','.join([str(x) for x in receive_endpoints[i]]),
+                    '--workload',
+                    f'{workload_filename}',
                 ])
             if inp.profiled:
                 client_proc = perf_util.JavaPerfProc(

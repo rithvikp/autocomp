@@ -11,6 +11,7 @@ use hydroflow::util::{
 use hydroflow_datalog::datalog;
 use prost::Message;
 use rand::{distributions::Alphanumeric, Rng};
+use std::rc::Rc;
 
 #[derive(clap::Args, Debug)]
 pub struct CollectorArgs {
@@ -20,14 +21,9 @@ pub struct CollectorArgs {
     collector_num_replica_groups: Option<u32>,
 }
 
-fn serialize(v: (i64,)) -> bytes::Bytes {
-    let s = voting_proto::ClientReply {
-        id: v.0,
-        accepted: true,
-    };
-    let mut buf = Vec::new();
-    s.encode(&mut buf).unwrap();
-    return bytes::Bytes::from(buf);
+fn serialize(payload: Rc<Vec<u8>>) -> bytes::Bytes {
+    // TODO: Remove this copy if possible
+    return bytes::Bytes::from(payload.as_ref().to_vec());
 }
 
 pub async fn run(cfg: CollectorArgs, mut ports: HashMap<String, ServerOrBound>) {
@@ -57,16 +53,16 @@ pub async fn run(cfg: CollectorArgs, mut ports: HashMap<String, ServerOrBound>) 
     let df = datalog!(
         r#"
 .input numParticipants `repeat_iter([(num_participant_groups,),])` # Assume = 0,1,2...num_participants
-.async clientOut `map(|(node_id, id)| (node_id, serialize(id))) -> dest_sink(client_send)` `null::<(u32, i64,)>()`
+.async clientOut `map(|(node_id, (v,)):(u32,(Rc<Vec<u8>>,))| (node_id, serialize(v))) -> dest_sink(client_send)` `null::<(Rc<Vec<u8>>,)>()`
 
-.async voteFromParticipant `null::<(u32,u32,i64,)>()` `source_stream(from_participant_source) -> map(|v| deserialize_from_bytes::<(u32,u32,i64,)>(v.unwrap().1).unwrap())`
+.async voteFromParticipant `null::<(u32,u32,i64,Rc<Vec<u8>>)>()` `source_stream(from_participant_source) -> map(|v| deserialize_from_bytes::<(u32,u32,i64,Rc<Vec<u8>>)>(v.unwrap().1).unwrap())`
 
-allVotes(l, client, v) :- voteFromParticipant(l, client, v)
-allVotes(l, client, v) :+ allVotes(l, client, v), !committed(client, v)
-voteCounts(count(l), client, v) :- allVotes(l, client, v)
-committed(client, v) :- voteCounts(n, client, v), numParticipants(n)
+allVotes(l, client, id, v) :- voteFromParticipant(l, client, id, v)
+allVotes(l, client, id, v) :+ allVotes(l, client, id, v), !committed(client, id, _)
+voteCounts(count(l), client, id) :- allVotes(l, client, id, v)
+committed(client, id, v) :- voteCounts(n, client, id), allVotes(l, client, id, v), numParticipants(n)
 
-clientOut@client(v) :~ committed(client, v)
+clientOut@client(v) :~ committed(client, id, v)
         "#
     );
 

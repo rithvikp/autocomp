@@ -43,6 +43,12 @@ def main(args) -> None:
                 monitored=self._args.monitor,
                 prometheus_scrape_interval=datetime.timedelta(
                     milliseconds=200),
+                workload =
+                    read_write_workload.UniformReadWriteWorkload(
+                    num_keys=1,
+                    read_fraction=0.0,
+                    write_size_mean=16,
+                    write_size_std=0),
             )
 
             for (num_client_procs, num_clients_per_proc) in [
@@ -70,6 +76,7 @@ def main(args) -> None:
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
+                'value_size': input.workload,
                 'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
                 'num_replica_groups': input.num_replica_groups,

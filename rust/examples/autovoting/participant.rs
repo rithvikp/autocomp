@@ -9,6 +9,7 @@ use hydroflow::util::{
 };
 use hydroflow_datalog::datalog;
 use std::convert::TryFrom;
+use std::rc::Rc;
 
 #[derive(clap::Args, Debug)]
 pub struct ParticipantArgs {
@@ -41,11 +42,11 @@ pub async fn run(cfg: ParticipantArgs, mut ports: HashMap<String, ServerOrBound>
 .input myID `repeat_iter([(my_id,),])`
 .input numCollectorPartitions `repeat_iter([(num_collector_partitions,),])` # Assume id = 0,1,2...
 
-.async voteToParticipant `null::<(u32,i64,)>()` `source_stream(to_participant_source) -> map(|x| deserialize_from_bytes::<(u32,i64,)>(x.unwrap().1).unwrap())`
-.async voteFromParticipant `map(|(node_id, v)| (u32::try_from(node_id).unwrap(), serialize_to_bytes(v))) -> dest_sink(from_participant_sink)` `null::<(u32,u32,i64,)>()`
+.async voteToParticipant `null::<(u32,i64,Rc<Vec<u8>>)>()` `source_stream(to_participant_source) -> map(|x| deserialize_from_bytes::<(u32,i64,Rc<Vec<u8>>,)>(x.unwrap().1).unwrap())`
+.async voteFromParticipant `map(|(node_id, v)| (u32::try_from(node_id).unwrap(), serialize_to_bytes(v))) -> dest_sink(from_participant_sink)` `null::<(u32,u32,i64,Rc<Vec<u8>>,)>()`
     
 // out(v%n, i, client, v) :- voteToParticipant(v, client), numCollectorPartitions(n), myID(i)
-voteFromParticipant@(v%n)(i, client, v) :~ voteToParticipant(client, v), numCollectorPartitions(n), myID(i)
+voteFromParticipant@(id%n)(i, client, id, v) :~ voteToParticipant(client, id, v), numCollectorPartitions(n), myID(i)
         "#
     );
 

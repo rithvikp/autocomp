@@ -13,22 +13,26 @@ option (scalapb.options) = {
 message ClientRequest {
   required int64 id = 1;
   required bytes client_address = 2;
+  required bytes command = 3;
 }
 
 message ClientReply {
   required int64 id = 1;
   required bool accepted = 2;
+  required bytes command = 3;
 }
 
 message VoteRequest {
   required int64 id = 1;
   required bytes client_address = 2;
+  required bytes command = 3;
 }
 
 message VoteReply {
   required int64 id = 1;
   required bytes client_address = 2;
   required bool accepted = 3;
+  required bytes command = 4;
 }
 
 message LeaderInbound {
