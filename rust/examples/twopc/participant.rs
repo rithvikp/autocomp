@@ -56,7 +56,7 @@ pub async fn run(cfg: ParticipantArgs, mut ports: HashMap<String, ServerOrBound>
 
     // Logging
     let log_directory = "twopc_out";
-    let participant_log = "participant.txt";
+    let participant_log = my_id.to_string() + "participant.txt";
 
     fs::create_dir_all(log_directory.clone()).await.unwrap();
     let path = Path::new(".").join(log_directory).join(participant_log);
