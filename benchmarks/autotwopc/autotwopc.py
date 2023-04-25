@@ -122,26 +122,10 @@ class AutoTwoPCNet:
                 'host': self.placement(index=index).leader.host.ip(),
                 'port': self.placement(index=index).leader.port,
             },
-            'vote_requester_address': [{
+            'replica_address': [{
                 'host': e.host.ip(),
                 'port': e.port,
-            } for e in self.placement(index=index).vote_requesters],
-            'participant_voter_address': [{
-                'host': e.host.ip(),
-                'port': e.port,
-            } for e in self.placement(index=index).participant_voters],
-            'committer_address': [{
-                'host': e.host.ip(),
-                'port': e.port,
-            } for e in self.placement(index=index).committers],
-            'participant_acker_address': [{
-                'host': e.host.ip(),
-                'port': e.port,
-            } for e in self.placement(index=index).participant_ackers],
-            'ender_address': [{
-                'host': e.host.ip(),
-                'port': e.port,
-            } for e in self.placement(index=index).enders],
+            } for e in self.placement(index = index).participant_ackers],
         }
 
 
@@ -172,7 +156,7 @@ class AutoTwoPCSuite(benchmark.Suite[Input, Output]):
             for (i, vote_requester) in enumerate(net.prom_placement().vote_requesters):
                 vote_requester_procs.append(self.provisioner.popen_hydroflow(bench, f'vote_requesters_{i}', 1, [
                     '--service',
-                    'vote_requester',
+                    'vote-requester',
                     '--prometheus-host',
                     vote_requester.host.ip(),
                     '--prometheus-port',
@@ -190,7 +174,7 @@ class AutoTwoPCSuite(benchmark.Suite[Input, Output]):
             for (i, participant_voter) in enumerate(net.prom_placement().participant_voters):
                 participant_voter_procs.append(self.provisioner.popen_hydroflow(bench, f'participant_voters_{i}', 1, [
                     '--service',
-                    'participant_voter',
+                    'participant-voter',
                     '--prometheus-host',
                     participant_voter.host.ip(),
                     '--prometheus-port',
@@ -226,7 +210,7 @@ class AutoTwoPCSuite(benchmark.Suite[Input, Output]):
             for (i, participant_acker) in enumerate(net.prom_placement().participant_ackers):
                 participant_acker_procs.append(self.provisioner.popen_hydroflow(bench, f'participant_ackers_{i}', 1, [
                     '--service',
-                    'participant_acker',
+                    'participant-acker',
                     '--prometheus-host',
                     participant_acker.host.ip(),
                     '--prometheus-port',
@@ -244,7 +228,7 @@ class AutoTwoPCSuite(benchmark.Suite[Input, Output]):
             for (i, ender) in enumerate(net.prom_placement().enders):
                 ender_procs.append(self.provisioner.popen_hydroflow(bench, f'enders_{i}', 1, [
                     '--service',
-                    'collector',
+                    'ender',
                     '--prometheus-host',
                     ender.host.ip(),
                     '--prometheus-port',

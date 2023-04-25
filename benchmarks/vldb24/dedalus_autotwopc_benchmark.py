@@ -10,10 +10,15 @@ def main(args) -> None:
             return vars(self._args)
 
         def cluster_spec(self) -> Dict[str, Dict[str, int]]:
+            # Max across any benchmark
             return {
                 '1': {
                     'leaders': 1,
-                    'replicas': 7, # Max across any benchmark
+                    'vote_requesters': 1,
+                    'participant_voters': 7,
+                    'committers': 1,
+                    'participant_ackers': 7,
+                    'enders': 1,
                     'clients': 10,
                 },
             }

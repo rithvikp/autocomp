@@ -14,7 +14,7 @@ def main(args) -> None:
                 # Max across any benchmark
                 '1': {
                     'leaders': 2,
-                    'replicas': 3,
+                    'replicas': 7,
                     'clients': 10,
                     'acceptors': 3*3,
                     # Num coordinators = num logical acceptors
