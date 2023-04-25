@@ -1,5 +1,3 @@
-use frankenpaxos::voting_proto;
-use hydroflow::bytes::BytesMut;
 use hydroflow::{
     tokio_util::codec::{Framed, LinesCodec},
     util::{
@@ -11,10 +9,9 @@ use hydroflow::{
     },
 };
 use hydroflow_datalog::datalog;
-use prost::Message;
+use std::{collections::HashMap, path::Path, rc::Rc};
 use tokio::fs;
 use tokio::fs::OpenOptions;
-use std::{collections::HashMap, io::Cursor, path::Path, rc::Rc};
 
 #[derive(clap::Args, Debug)]
 pub struct CommitterArgs {
@@ -26,7 +23,6 @@ pub struct CommitterArgs {
 }
 
 pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) {
-
     let vote_from_participant_source = ports
         .remove("receive_from$participant_voters$0")
         .unwrap()
@@ -42,7 +38,8 @@ pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) 
         .into_sink();
 
     let num_participants = i64::from(cfg.committer_num_participants.unwrap());
-    let num_participant_acker_partitions = i64::from(cfg.committer_num_participant_acker_partitions.unwrap());
+    let num_participant_acker_partitions =
+        i64::from(cfg.committer_num_participant_acker_partitions.unwrap());
     let log_directory = "autotwopc_out";
     let coordinator_log = "coordinator.txt";
 

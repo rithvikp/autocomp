@@ -1,17 +1,12 @@
-use frankenpaxos::voting_proto;
-use hydroflow::bytes::BytesMut;
-use hydroflow::{
-    util::{
-        cli::{
-            launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
-            ConnectedTagged, ServerOrBound,
-        },
-        deserialize_from_bytes, serialize_to_bytes,
+use hydroflow::util::{
+    cli::{
+        launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
+        ConnectedTagged, ServerOrBound,
     },
+    deserialize_from_bytes, serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
-use prost::Message;
-use std::{collections::HashMap, io::Cursor, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 #[derive(clap::Args, Debug)]
 pub struct VoteRequesterArgs {
@@ -19,11 +14,10 @@ pub struct VoteRequesterArgs {
     vote_requester_num_participants: Option<u32>,
 
     #[clap(long = "vote-requester.num-participant-voter-partitions")]
-    vote_requester_num_participant_voter_partitions: Option<u32>
+    vote_requester_num_participant_voter_partitions: Option<u32>,
 }
 
 pub async fn run(cfg: VoteRequesterArgs, mut ports: HashMap<String, ServerOrBound>) {
-
     let vote_to_vote_requester_source = ports
         .remove("receive_from$leaders$0")
         .unwrap()
@@ -39,8 +33,9 @@ pub async fn run(cfg: VoteRequesterArgs, mut ports: HashMap<String, ServerOrBoun
         .into_sink();
 
     let num_participants = i64::from(cfg.vote_requester_num_participants.unwrap());
-    let num_participant_voter_partitions = i64::from(cfg.vote_requester_num_participant_voter_partitions.unwrap());
-    
+    let num_participant_voter_partitions =
+        i64::from(cfg.vote_requester_num_participant_voter_partitions.unwrap());
+
     let mut participant_voter_start_ids = Vec::<i64>::new();
     for i in 0..num_participants {
         participant_voter_start_ids.push(i * num_participant_voter_partitions);

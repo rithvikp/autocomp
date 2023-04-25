@@ -192,16 +192,29 @@ class AutoMultiPaxosNet:
                 'host': e.host.ip(),
                 'port': e.port
             } for e in self.placement(index=index).leaders],
+            # Placeholder
             'proxy_leader_address': [{
                 'host': e.host.ip(),
                 'port': e.port
             } for e in self.placement(index=index).leaders],
+            'p2a_proxy_leader_address': [{
+                'host': e.host.ip(),
+                'port': e.port
+            } for e in self.placement(index=index).p2a_proxy_leaders],
             'acceptor_address': [{
                 'acceptor_address': [{
                     'host': e.host.ip(),
                     'port': e.port
                 } for e in self.placement(index=index).acceptors[i*self._input.num_acceptors_per_partition:(i+1)*self._input.num_acceptors_per_partition]]
             } for i in range(self._input.num_acceptor_partitions)],
+            'coordinator_address': [{
+                'host': e.host.ip(),
+                'port': e.port
+            } for e in self.placement(index=index).coordinators],
+            'p2b_proxy_leader_address': [{
+                'host': e.host.ip(),
+                'port': e.port
+            } for e in self.placement(index=index).p2b_proxy_leaders],
             'replica_address': [{
                 'host': e.host.ip(),
                 'port': e.port

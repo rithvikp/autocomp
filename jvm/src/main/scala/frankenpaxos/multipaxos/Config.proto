@@ -35,4 +35,7 @@ message NettyConfigProto {
   repeated HostPortProto proxy_replica_address = 9;
   required bool flexible = 10;
   required DistributionSchemeProto distribution_scheme = 11;
+  repeated HostPortProto p2a_proxy_leader_address = 12;
+  repeated HostPortProto p2b_proxy_leader_address = 13;
+  repeated HostPortProto coordinator_address = 14;
 }

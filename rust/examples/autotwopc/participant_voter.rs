@@ -1,5 +1,3 @@
-use frankenpaxos::voting_proto;
-use hydroflow::bytes::BytesMut;
 use hydroflow::{
     tokio_util::codec::{Framed, LinesCodec},
     util::{
@@ -11,10 +9,9 @@ use hydroflow::{
     },
 };
 use hydroflow_datalog::datalog;
-use prost::Message;
+use std::{collections::HashMap, path::Path, rc::Rc};
 use tokio::fs;
 use tokio::fs::OpenOptions;
-use std::{collections::HashMap, io::Cursor, path::Path, rc::Rc};
 
 #[derive(clap::Args, Debug)]
 pub struct ParticipantVoterArgs {
@@ -26,7 +23,6 @@ pub struct ParticipantVoterArgs {
 }
 
 pub async fn run(cfg: ParticipantVoterArgs, mut ports: HashMap<String, ServerOrBound>) {
-
     let vote_to_participant_source = ports
         .remove("receive_from$vote_requesters$0")
         .unwrap()

@@ -14,11 +14,11 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'vote_requesters': 1,
+                    'vote_requesters': 3,
                     'participant_voters': 7,
-                    'committers': 1,
+                    'committers': 3,
                     'participant_ackers': 7,
-                    'enders': 1,
+                    'enders': 3,
                     'clients': 10,
                 },
             }
@@ -72,11 +72,11 @@ def main(args) -> None:
                     (10, 100),
                 ]
                 for num_participants in [7]
-                for num_vote_requesters in [1]
+                for num_vote_requesters in [1,3]
                 for num_participant_voter_partitions in [1]
-                for num_committers in [1]
+                for num_committers in [1,3]
                 for num_participant_acker_partitions in [1]
-                for num_enders in [1]
+                for num_enders in [1,3]
                 for leader_flush_every_n in [1] #[15,1]
             ]#*3
 

@@ -1,13 +1,11 @@
 use frankenpaxos::voting_proto;
 use hydroflow::bytes::BytesMut;
-use hydroflow::{
-    util::{
-        cli::{
-            launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
-            ConnectedTagged, ServerOrBound,
-        },
-        deserialize_from_bytes, serialize_to_bytes,
+use hydroflow::util::{
+    cli::{
+        launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
+        ConnectedTagged, ServerOrBound,
     },
+    serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
@@ -19,7 +17,7 @@ pub struct LeaderArgs {
     flush_every_n: usize,
 
     #[clap(long = "leader.num-vote-requester-partitions")]
-    num_vote_requester_partitions: Option<u32>
+    num_vote_requester_partitions: Option<u32>,
 }
 
 // Returns (client_id, request_id, reply)
@@ -46,7 +44,8 @@ fn deserialize(
 }
 
 pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
-    let client_requests = prometheus::register_counter!("autotwopc_requests_total", "help").unwrap();
+    let client_requests =
+        prometheus::register_counter!("autotwopc_requests_total", "help").unwrap();
 
     // Client setup
     let client_recv = ports

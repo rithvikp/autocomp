@@ -45,7 +45,7 @@ def main(args) -> None:
         raise Exception(f'List more matplotlib markers to match the number of results: {len(grouped_df)}')
     
     for (i, (fields, df)) in enumerate(grouped_df):
-        label = f"AutoPaxos(Replicas={fields[0]}, Acc_Partitions={fields[1]}, P2a_PL={fields[2]}, P2a_PL={fields[3]})"
+        label = f"AutoPaxos(Replicas={fields[0]}, Acc_Partitions={fields[1]}, P2a_PL={fields[2]}, P2b_PL={fields[3]})"
         if fields[0] != 3:
             continue
         plot_lt(df, ax, markers[i] + "-", label)

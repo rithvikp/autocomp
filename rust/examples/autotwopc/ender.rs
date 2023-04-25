@@ -1,22 +1,17 @@
-use frankenpaxos::voting_proto;
-use hydroflow::bytes::BytesMut;
-use hydroflow::{
-    util::{
-        cli::{
-            launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
-            ConnectedTagged, ServerOrBound,
-        },
-        deserialize_from_bytes, serialize_to_bytes,
+use hydroflow::util::{
+    cli::{
+        launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
+        ConnectedTagged, ServerOrBound,
     },
+    deserialize_from_bytes,
 };
 use hydroflow_datalog::datalog;
-use prost::Message;
-use std::{collections::HashMap, io::Cursor, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 #[derive(clap::Args, Debug)]
 pub struct EnderArgs {
     #[clap(long = "ender.num-participants")]
-    ender_num_participants: Option<u32>
+    ender_num_participants: Option<u32>,
 }
 
 fn serialize(payload: Rc<Vec<u8>>) -> bytes::Bytes {
@@ -25,7 +20,6 @@ fn serialize(payload: Rc<Vec<u8>>) -> bytes::Bytes {
 }
 
 pub async fn run(cfg: EnderArgs, mut ports: HashMap<String, ServerOrBound>) {
-
     let ack_from_participant_source = ports
         .remove("receive_from$participant_ackers$0")
         .unwrap()
@@ -41,7 +35,7 @@ pub async fn run(cfg: EnderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .into_sink();
 
     let num_participants = i64::from(cfg.ender_num_participants.unwrap());
-    
+
     let df = datalog!(
         r#"
         ######################## relation definitions
