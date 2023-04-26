@@ -83,6 +83,7 @@ class Input(NamedTuple):
 
     # Benchmark parameters. ####################################################
     measurement_group_size: int
+    start_lag: datetime.timedelta
     warmup_duration: datetime.timedelta
     warmup_timeout: datetime.timedelta
     warmup_sleep: datetime.timedelta
@@ -233,6 +234,11 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
                       input: Input) -> Output:
         assert input.f*2 + 1 == input.num_acceptors_per_partition
         net = AutoMultiPaxosNet(input, self.provisioner.hosts(input.f))
+
+        # Pre-benchmark lag.
+        time.sleep(input.start_lag.total_seconds())
+        bench.log('Pre-benchmark lag ended.')
+
 
         # Launch acceptors.
         if self.service_type("acceptors") == "hydroflow":

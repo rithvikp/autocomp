@@ -352,6 +352,11 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
         s"id=${clientRequest.command.commandId.clientId}]",
       options.resendClientRequestPeriod,
       () => {
+        logger.debug(
+          s"Resending client request " +
+            s"[pseudonym=${clientRequest.command.commandId.clientPseudonym}; " +
+            s"id=${clientRequest.command.commandId.clientId}]"
+        )
         sendClientRequest(clientRequest, forceFlush = true)
         metrics.resendClientRequestTotal.inc()
         t.start()

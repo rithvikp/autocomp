@@ -49,7 +49,8 @@ fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
 }
 
 pub async fn run(cfg: P2bProxyLeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
-    let commits = prometheus::register_counter!("automultipaxos_replica_commits", "help").unwrap();
+    let commits =
+        prometheus::register_counter!("automultipaxos_p2b_proxy_leader_commits", "help").unwrap();
 
     let p2b_source = ports
         .remove("receive_from$acceptors$0")

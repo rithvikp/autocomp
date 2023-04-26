@@ -1,0 +1,20 @@
+syntax = "proto2";
+
+package frankenpaxos.twopc;
+
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  package_name: "frankenpaxos.twopc"
+  flat_package: true
+};
+
+message HostPortProto {
+  required string host = 1;
+  required int32 port = 2;
+}
+
+message NettyConfigProto {
+  repeated HostPortProto replica_address = 1;
+  required HostPortProto leader_address = 2;
+}

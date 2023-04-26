@@ -15,16 +15,9 @@ import re
 markers = ["o", "^", "s", "D", "p", "P", "X", "d"]
 
 def plot_lt(df: pd.DataFrame, ax: plt.Axes, marker: str, label: str) -> None:
-    grouped = df.groupby('num_clients')
-    throughput = grouped['throughput'].agg(np.mean).sort_index() / 1000
-    throughput_std = grouped['throughput'].agg(np.std).sort_index() / 1000
-    latency = grouped['latency'].agg(np.mean).sort_index()
+    throughput = df['throughput']
+    latency = df['latency']
     line = ax.plot(throughput, latency, marker, label=label, linewidth=2)[0]
-    ax.fill_betweenx(latency,
-                     throughput - throughput_std,
-                     throughput + throughput_std,
-                     color = line.get_color(),
-                     alpha=0.25)
 
 
 def main(args) -> None:
@@ -49,7 +42,7 @@ def main(args) -> None:
     ax.set_title('')
     ax.set_xlabel('Throughput (thousands of commands per second)')
     ax.set_ylabel('Median latency (ms)')
-    ax.legend(loc='upper right')
+    ax.legend(loc='lower left')
     ax.grid()
     fig.savefig(args.output, bbox_inches='tight')
     print(f'Wrote plot to {args.output}.')

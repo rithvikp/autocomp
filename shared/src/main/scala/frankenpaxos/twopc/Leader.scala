@@ -1,4 +1,4 @@
-package frankenpaxos.voting
+package frankenpaxos.twopc
 
 import collection.mutable
 import frankenpaxos.Actor
@@ -11,6 +11,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import scala.scalajs.js.annotation._
 import com.google.protobuf.ByteString
+import com.github.tototoshi.csv.CSVWriter
 
 @JSExportAll
 object LeaderInboundSerializer extends ProtoSerializer[LeaderInbound] {
@@ -27,9 +28,9 @@ object Leader {
 
 @JSExportAll
 class LeaderMetrics(collectors: Collectors) {
-  val votingRequestsTotal: Counter = collectors.counter
+  val twoPCRequestsTotal: Counter = collectors.counter
     .build()
-    .name("voting_requests_total")
+    .name("twopc_leader_requests_total")
     .help("Total client requests.")
     .register()
 }
@@ -40,6 +41,7 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
     config: Config[Transport],
     transport: Transport,
     logger: Logger,
+    writer: CSVWriter,
     metrics: LeaderMetrics = new LeaderMetrics(PrometheusCollectors)
 ) extends Actor(address, transport, logger) {
 
@@ -53,7 +55,8 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
       yield chan[Replica[Transport]](address, Replica.serializer)
 
   private val clients = mutable.Map[ByteString, Chan[Client[Transport]]]()
-  private val votes = mutable.Map[Request, Int]()
+  private val p1Votes = mutable.Map[Request, Int]()
+  private val p2Votes = mutable.Map[Request, Int]()
 
   val flushEveryN = 15
   private var numMessagesSinceLastFlush = 0
@@ -63,44 +66,84 @@ class Leader[Transport <: frankenpaxos.Transport[Transport]](
       inbound: LeaderInbound
   ): Unit = {
     inbound.request match {
-      case LeaderInbound.Request.VoteReply(payload) =>
+      case LeaderInbound.Request.P1Reply(payload) =>
         val request = Request(payload.id, payload.clientAddress, payload.command)
-        if (!votes.contains(request)) {
+        if (!p1Votes.contains(request)) {
           return
         }
 
-        if (payload.accepted) {
-          votes.put(request, votes(request) + 1)
-          if (votes(request) == replicas.size) {
-            votes.remove(request)
-            numMessagesSinceLastFlush += 1
-            clients(payload.clientAddress).sendNoFlush(
-              ClientReply(id = payload.id, accepted = true, command = payload.command)
+        if (payload.prepared) {
+          p1Votes.put(request, p1Votes(request) + 1)
+          if (p1Votes(request) == replicas.size) {
+            p1Votes.remove(request)
+
+            p2Votes.put(request, 0)
+
+            writer.writeRow(
+              Seq(payload.clientAddress.toString, payload.id.toString, payload.command.toString)
+            )
+            writer.flush()
+
+            numMessagesSinceLastFlush += replicas.length
+            replicas.foreach(
+              _.sendNoFlush(
+                ReplicaInbound().withP2Request(
+                  P2Request(id = payload.id,
+                            clientAddress = payload.clientAddress,
+                            command = payload.command
+                  )
+                )
+              )
             )
           }
         } else {
-          votes.remove(request)
+          p1Votes.remove(request)
           numMessagesSinceLastFlush += 1
           clients(payload.clientAddress).sendNoFlush(
-            ClientReply(id = payload.id, accepted = false, command = payload.command)
+            ClientReply(id = payload.id, committed = false, command = payload.command)
+          )
+        }
+
+      case LeaderInbound.Request.P2Reply(payload) =>
+        val request = Request(payload.id, payload.clientAddress, payload.command)
+        if (!p2Votes.contains(request)) {
+          return
+        }
+
+        if (payload.committed) {
+          p2Votes.put(request, p2Votes(request) + 1)
+          if (p2Votes(request) == replicas.size) {
+            p2Votes.remove(request)
+            numMessagesSinceLastFlush += 1
+            clients(payload.clientAddress).sendNoFlush(
+              ClientReply(id = payload.id, committed = true, command = payload.command)
+            )
+          }
+        } else {
+          p2Votes.remove(request)
+          numMessagesSinceLastFlush += 1
+          clients(payload.clientAddress).sendNoFlush(
+            ClientReply(id = payload.id, committed = false, command = payload.command)
           )
         }
 
       case LeaderInbound.Request.ClientRequest(payload) =>
         val request = Request(payload.id, payload.clientAddress, payload.command)
-        metrics.votingRequestsTotal.inc()
+        metrics.twoPCRequestsTotal.inc()
         if (!clients.contains(payload.clientAddress)) {
           clients.put(payload.clientAddress, chan[Client[Transport]](src, Client.serializer))
         }
 
-        votes.put(request, 0)
+        p1Votes.put(request, 0)
 
         numMessagesSinceLastFlush += replicas.length
         replicas.foreach(
           _.sendNoFlush(
-            VoteRequest(id = payload.id,
+            ReplicaInbound().withP1Request(
+              P1Request(id = payload.id,
                         clientAddress = payload.clientAddress,
                         command = payload.command
+              )
             )
           )
         )

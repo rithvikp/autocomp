@@ -303,7 +303,7 @@ nextSlot(s+1) :+ IsLeader(), MaxProposedSlot(s), !nextSlot(s2)
 
 
 ######################## send p2as 
-IndexedPayloads(payload, index()) :- clientIn(payload), nextSlot(s), IsLeader()
+IndexedPayloads(payload, index()) :- clientIn(payload), IsLeader()
 p2a@(start+(slot%n))(i, payload, (slot + offset), i, num) :~ IndexedPayloads(payload, offset), nextSlot(slot), id(i), ballot(num), numP2aProxyLeaders(n), p2aProxyLeadersStartID(start)
 # Increment the slot if a payload was chosen
 NumPayloads(count(payload)) :- clientIn(payload)

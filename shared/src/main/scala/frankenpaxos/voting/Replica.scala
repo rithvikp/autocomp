@@ -44,7 +44,11 @@ class Replica[Transport <: frankenpaxos.Transport[Transport]](
   ): Unit = {
     leader.send(
       LeaderInbound().withVoteReply(
-        VoteReply(id = inbound.id, clientAddress = inbound.clientAddress, accepted = true, command = inbound.command)
+        VoteReply(id = inbound.id,
+                  clientAddress = inbound.clientAddress,
+                  accepted = true,
+                  command = inbound.command
+        )
       )
     )
   }

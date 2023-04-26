@@ -1,4 +1,4 @@
-package frankenpaxos.voting
+package frankenpaxos.twopc
 
 import collection.mutable
 import com.google.protobuf.ByteString
@@ -49,7 +49,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
         promise.success(())
         promises -= reply.id
       case None =>
-        logger.fatal(s"Received reply for unpending echo ${reply.id}.")
+        logger.fatal(s"Received reply for unpending request ${reply.id}.")
     }
   }
 

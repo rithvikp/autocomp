@@ -39,13 +39,13 @@ def main(args) -> None:
     df['throughput'] = df['write_output.start_throughput_1s.p90'] if 'write_output.start_throughput_1s.p90' in df else df['start_throughput_1s.p90']
     df['latency'] = df['write_output.latency.median_ms'] if 'write_output.latency.median_ms' in df else df['latency.median_ms']
 
-    grouped_df = df.groupby(['num_replicas', 'num_acceptor_partitions', 'num_p2a_proxy_leaders_per_leader', 'num_p2b_proxy_leaders_per_leader'])
+    grouped_df = df.groupby(['num_participants', 'num_vote_requesters', 'num_participant_voter_partitions', 'num_committers', 'num_participant_acker_partitions', 'num_enders'])
 
     if len(grouped_df) > len(markers):
         raise Exception(f'List more matplotlib markers to match the number of results: {len(grouped_df)}')
     
     for (i, (fields, df)) in enumerate(grouped_df):
-        label = f"AutoPaxos(Replicas={fields[0]}, Acc_Partitions={fields[1]}, P2a_PL={fields[2]}, P2b_PL={fields[3]})"
+        label = f"AutoTwoPC(Participants={fields[0]}, VoteRequesters={fields[1]}, VoterPartitions={fields[2]}, Committers={fields[3]}, AckerPartitions={fields[4]}, Enders={fields[5]})"
         plot_lt(df, ax, markers[i] + "-", label)
 
     ax.set_title('')
@@ -66,7 +66,7 @@ def get_parser() -> argparse.ArgumentParser:
                         nargs='+')
     parser.add_argument('--output',
                         type=str,
-                        default='autopaxos_search.pdf',
+                        default='autotwopc_search.pdf',
                         help='Output filename')
 
     return parser

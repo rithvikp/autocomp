@@ -1,4 +1,4 @@
-package frankenpaxos.voting
+package frankenpaxos.twopc
 
 import collection.mutable
 import com.github.tototoshi.csv.CSVWriter
