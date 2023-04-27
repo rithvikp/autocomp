@@ -1,6 +1,6 @@
 use bytes::Bytes;
+use frankenpaxos::automicrobenchmarks_proto;
 use hydroflow::bytes::BytesMut;
-use hydroflow::tokio_stream::wrappers::IntervalStream;
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,

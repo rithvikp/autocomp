@@ -1,1 +1,0 @@
-Same protocol as `../decoupling-mutually-independent`.
