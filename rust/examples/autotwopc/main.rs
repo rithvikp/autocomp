@@ -1,10 +1,10 @@
 use clap::Parser;
-mod leader;
-mod vote_requester;
-mod participant_voter;
 mod committer;
-mod participant_acker;
 mod ender;
+mod leader;
+mod participant_acker;
+mod participant_voter;
+mod vote_requester;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 enum Service {

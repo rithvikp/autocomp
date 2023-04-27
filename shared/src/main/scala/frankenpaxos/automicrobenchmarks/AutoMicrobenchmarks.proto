@@ -1,0 +1,21 @@
+syntax = "proto2";
+
+package frankenpaxos.automicrobenchmarks;
+
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  package_name: "frankenpaxos.automicrobenchmarks"
+  flat_package: true
+};
+
+message ServerInbound {
+  required int64 id = 1;
+  required uint32 ballot = 2;
+  required bytes payload = 3;
+  required bytes signature = 4;
+}
+
+message ClientInbound {
+  required int64 id = 1;
+}

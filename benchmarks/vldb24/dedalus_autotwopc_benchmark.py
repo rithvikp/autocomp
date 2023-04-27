@@ -14,11 +14,11 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'vote_requesters': 3,
-                    'participant_voters': 7,
-                    'committers': 3,
-                    'participant_ackers': 7,
-                    'enders': 3,
+                    'vote_requesters': 10,
+                    'participant_voters': 3*20,
+                    'committers': 20,
+                    'participant_ackers': 3*10,
+                    'enders': 20,
                     'clients': 10,
                 },
             }
@@ -59,10 +59,10 @@ def main(args) -> None:
                 # for num_replicas in [3, 5]
                 for (num_client_procs, num_clients_per_proc) in [
                     (1, 1),
-                    (1, 50),
-                    (1, 100),
-                    (2, 100),
-                    (3, 100),
+                    # (1, 50),
+                    # (1, 100),
+                    # (2, 100),
+                    # (3, 100),
                     (4, 100),
                     (5, 100),
                     (6, 100),
@@ -71,12 +71,12 @@ def main(args) -> None:
                     (9, 100),
                     (10, 100),
                 ]
-                for num_participants in [7]
-                for num_vote_requesters in [1,3]
-                for num_participant_voter_partitions in [1]
-                for num_committers in [1,3]
-                for num_participant_acker_partitions in [1]
-                for num_enders in [1,3]
+                for num_participants in [3]
+                for num_vote_requesters in [10]
+                for num_participant_voter_partitions in [20]
+                for num_committers in [20]
+                for num_participant_acker_partitions in [10]
+                for num_enders in [20]
                 for leader_flush_every_n in [1] #[15,1]
             ]#*3
 

@@ -72,6 +72,9 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,)> {
 }
 
 pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
+    let ticks = prometheus::register_counter!("automultipaxos_leader_ticks", "help").unwrap();
+    let requests = prometheus::register_counter!("automultipaxos_leader_incoming_requests", "help").unwrap();
+
     let p1a_port = ports
         .remove("send_to$acceptors$0")
         .unwrap()
@@ -175,6 +178,8 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 .output iAmLeaderReceiveOut `for_each(|(my_id,pid,num):(u32,u32,u32,)| println!("proposer {:?} received iAmLeader from proposer: [{:?},{:?}]", my_id, pid, num))`
 # For some reason Hydroflow can't infer the type of nextSlot, so we define it manually:
 .input nextSlot `null::<(u32,)>()`
+.output iAmLeader `for_each(|(_,_):(u32,u32)| ticks.inc())`
+.output clientIn `for_each(|(_,):(Rc<Vec<u8>>,)| requests.inc())`
 
 # IDB
 // .input clientIn `repeat_iter_external(vec![()]) -> map(|_| (context.current_tick() as u32,))`

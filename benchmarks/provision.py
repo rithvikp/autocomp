@@ -91,9 +91,20 @@ class EndpointProvider:
 
     def __str__(self):
         if self._endpoints_set is not None:
-            return str(self._endpoints_set)
+            out = "{"
+            for i, endpoints in enumerate(self._endpoints_set):
+                out += f"{i}: ["
+                for e in endpoints:
+                    out += f"{str(e)}, "
+                out += "], "
+            out += "}"
+            return out
         elif self._endpoints is not None:
-            return str(self._endpoints)
+            out = "["
+            for e in self._endpoints:
+                out += f"{str(e)}, "
+            out += "]"
+            return out
         return "[]"
 
 

@@ -13,9 +13,9 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'replicas': 21, # Max across any benchmark
-                    'collectors': 3, # Max across any benchmark
-                    'broadcasters': 3, # Max across any benchmark
+                    'replicas': 7*3, # Max across any benchmark
+                    'collectors': 10, # Max across any benchmark
+                    'broadcasters': 10, # Max across any benchmark
                     'clients': 10,
                 },
             }
@@ -52,14 +52,14 @@ def main(args) -> None:
             )
 
             for replica_groups in [7]
-            for replica_partitions in [1,3]
-            for collectors in [1,3]
-            for broadcasters in [1,3]
+            for replica_partitions in [3]
+            for collectors in [10]
+            for broadcasters in [10]
             for leader_flush_every_n in [15]
             for (num_client_procs, num_clients_per_proc) in [
                 (1, 1),
-                (1, 50),
-                (1, 100),
+                # (1, 50),
+                # (1, 100),
                 (2, 100),
                 (3, 100),
                 (4, 100),

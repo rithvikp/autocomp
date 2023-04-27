@@ -123,9 +123,10 @@ Output = AutoMultiPaxosOutput
 
 # Networks #####################################################################
 class AutoMultiPaxosNet:
-    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider]):
+    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider], run_index: int):
         self._input = inp
         self._endpoints = endpoints
+        self._run_index = run_index
 
     def update(self, endpoints: Dict[str, provision.EndpointProvider]) -> None:
         self._endpoints = endpoints
@@ -140,7 +141,7 @@ class AutoMultiPaxosNet:
         p2b_proxy_leaders: List[host.Endpoint]
 
     def prom_placement(self) -> Placement:
-        ports = itertools.count(40001, 100)
+        ports = itertools.count(40001+self._run_index, 100)
 
         def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
@@ -228,12 +229,22 @@ class AutoMultiPaxosNet:
 
 # Suite ########################################################################
 class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
+    def __init__(self):
+        self.run_index = 0
+        super().__init__()
+
     def run_benchmark(self,
                       bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any],
                       input: Input) -> Output:
         assert input.f*2 + 1 == input.num_acceptors_per_partition
-        net = AutoMultiPaxosNet(input, self.provisioner.hosts(input.f))
+        net = AutoMultiPaxosNet(input, self.provisioner.hosts(input.f), self.run_index)
+
+        prom_config_filename = bench.abspath('prom_config.txt')
+        bench.write_string(prom_config_filename, proto_util.message_to_pbtext({k: str(v) for (k, v) in net._endpoints.items()}))
+        bench.log("Finished assigning hosts. Now setting up hydroflow services.")
+
+        self.run_index += 1
 
         # Pre-benchmark lag.
         time.sleep(input.start_lag.total_seconds())

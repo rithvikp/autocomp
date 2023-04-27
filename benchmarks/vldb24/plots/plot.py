@@ -49,7 +49,7 @@ def main(args) -> None:
     ax.set_title('')
     ax.set_xlabel('Throughput (thousands of commands per second)')
     ax.set_ylabel('Median latency (ms)')
-    ax.legend(loc='upper right')
+    ax.legend(loc='upper left')
     ax.grid()
     fig.savefig(args.output, bbox_inches='tight')
     print(f'Wrote plot to {args.output}.')

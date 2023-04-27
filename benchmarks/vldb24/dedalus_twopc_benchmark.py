@@ -13,7 +13,7 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'replicas': 7, # Max across any benchmark
+                    'replicas': 3, # Max across any benchmark
                     'clients': 10,
                 },
             }
@@ -61,7 +61,7 @@ def main(args) -> None:
                     (9, 100),
                     (10, 100),
                 ]
-                for num_replicas in [7]
+                for num_replicas in [3]
                 for leader_flush_every_n in [1] #[15,1]
             ]#*3
 

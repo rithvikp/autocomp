@@ -60,9 +60,10 @@ Output = benchmark.RecorderOutput
 
 # Networks #####################################################################
 class AutoTwoPCNet:
-    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider]):
+    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider], run_index: int):
         self._input = inp
         self._endpoints = endpoints
+        self._run_index = run_index
 
     def update(self, endpoints: Dict[str, provision.EndpointProvider]) -> None:
         self._endpoints = endpoints
@@ -77,7 +78,7 @@ class AutoTwoPCNet:
         enders: List[host.Endpoint]
 
     def prom_placement(self) -> Placement:
-        ports = itertools.count(40001, 100)
+        ports = itertools.count(40001+self._run_index, 100)
 
         def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
@@ -128,12 +129,21 @@ class AutoTwoPCNet:
             } for e in self.placement(index = index).participant_ackers],
         }
 
-
 # Suite ########################################################################
 class AutoTwoPCSuite(benchmark.Suite[Input, Output]):
+    def __init__(self):
+        self.run_index = 0
+        super().__init__()
+
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], inp: Input) -> Output:
-        net = AutoTwoPCNet(inp, self.provisioner.hosts(1))
+        net = AutoTwoPCNet(inp, self.provisioner.hosts(1), self.run_index)
+
+        prom_config_filename = bench.abspath('prom_config.txt')
+        bench.write_string(prom_config_filename, proto_util.message_to_pbtext({k: str(v) for (k, v) in net._endpoints.items()}))
+        bench.log("Finished assigning hosts. Now setting up hydroflow services.")
+
+        self.run_index += 1
 
         if self.service_type("leaders") == "hydroflow":
             leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [

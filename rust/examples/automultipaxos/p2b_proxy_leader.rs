@@ -49,8 +49,8 @@ fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
 }
 
 pub async fn run(cfg: P2bProxyLeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
-    let commits =
-        prometheus::register_counter!("automultipaxos_p2b_proxy_leader_commits", "help").unwrap();
+    let requests = prometheus::register_counter!("automultipaxos_p2b_proxy_leader_incoming_p2b", "help").unwrap();
+    let responses = prometheus::register_counter!("automultipaxos_p2b_proxy_leader_outgoing_p2b", "help").unwrap();
 
     let p2b_source = ports
         .remove("receive_from$acceptors$0")
@@ -111,7 +111,8 @@ pub async fn run(cfg: P2bProxyLeaderArgs, mut ports: HashMap<String, ServerOrBou
 .output p2bToProposerOut `for_each(|(i,pid,max_id,max_num,t1):(u32,u32,u32,u32,u32,)| println!("p2bProxyLeader {:?} sent p2b to proposer {:?}: [{:?},{:?},{:?}]]", i, pid, max_id, max_num, t1))`
 .output p2bToProposerOut `for_each(|(i,pid,n,t1,prev_t):(u32,u32,u32,u32,u32,)| println!("p2bProxyLeader {:?} sent inputs to proposer {:?}: [{:?},{:?},{:?}]]", i, pid, n, t1, prev_t))`
 
-.output allCommitOut `for_each(|(_payload, _slot): (Rc<Vec<u8>>,u32)| commits.inc())`
+.output allCommit `for_each(|(_payload, _slot): (Rc<Vec<u8>>,u32)| {responses.inc(); responses.inc(); responses.inc()})`
+.output p2bU `for_each(|(_,_,_,_,_,_,_): (u32,Rc<Vec<u8>>,u32,u32,u32,u32,u32)| requests.inc())`
 
 
 # p2b: acceptorID, payload, slot, ballotID, ballotNum, maxBallotID, maxBallotNum
@@ -152,7 +153,6 @@ CountMatchingP2bs(payload, slot, count(acceptorID), i, num) :- p2b(acceptorID, p
 commit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), quorum(size), (c >= size)
 allCommit(payload, slot) :- CountMatchingP2bs(payload, slot, c, i, num), fullQuorum(c)
 clientOut@r(payload, slot) :~ allCommit(payload, slot), replicas(r)
-allCommitOut(payload, slot) :- allCommit(payload, slot)
 "#
     );
 
