@@ -4,7 +4,9 @@ fn main() -> Result<()> {
         &[
             "../shared/src/main/scala/frankenpaxos/echo/Echo.proto",
             "../shared/src/main/scala/frankenpaxos/voting/Voting.proto",
+            "../shared/src/main/scala/frankenpaxos/twopc/TwoPC.proto",
             "../shared/src/main/scala/frankenpaxos/multipaxos/MultiPaxos.proto",
+            "../shared/src/main/scala/frankenpaxos/automicrobenchmarks/AutoMicrobenchmarks.proto",
         ],
         &[
             "../shared/src/main/scala/frankenpaxos",

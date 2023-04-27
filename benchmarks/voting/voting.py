@@ -126,8 +126,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                 'leader',
                 '--prometheus-host',
                 net.prom_placement().leader.host.ip(),
-                '--prometheus-port',
-                str(net.prom_placement().leader.port),
+                f'--prometheus-port={str(net.prom_placement().leader.port)}',
                 '--flush-every-n',
                 str(inp.leader_flush_every_n),
             ])
@@ -142,8 +141,7 @@ class VotingSuite(benchmark.Suite[Input, Output]):
                     str(i),
                     '--prometheus-host',
                     replica.host.ip(),
-                    '--prometheus-port',
-                    str(replica.port),
+                    f'--prometheus-port={str(replica.port)}',
                 ]))
 
         bench.log("Reconfiguring the system for a new benchmark")

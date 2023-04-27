@@ -54,16 +54,16 @@ def main(args) -> None:
                     (2, 100),
                     (3, 100),
                     (4, 100),
-                    (5, 100),
-                    (6, 100),
-                    (7, 100),
-                    (8, 100),
-                    (9, 100),
-                    (10, 100),
+                    # (5, 100),
+                    # (6, 100),
+                    # (7, 100),
+                    # (8, 100),
+                    # (9, 100),
+                    # (10, 100),
                 ]
                 for num_replicas in [7]
                 for leader_flush_every_n in [1] #[15,1]
-            ]#*3
+            ] *3
 
         def summary(self, input: Input, output: Output) -> str:
             return str({

@@ -250,7 +250,6 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
         time.sleep(input.start_lag.total_seconds())
         bench.log('Pre-benchmark lag ended.')
 
-
         # Launch acceptors.
         if self.service_type("acceptors") == "hydroflow":
             acceptor_procs: List[proc.Proc] = []
@@ -270,8 +269,7 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
                         str(input.num_p2b_proxy_leaders_per_leader),
                         '--prometheus-host',
                         acceptor.host.ip(),
-                        '--prometheus-port',
-                        str(acceptor.port),
+                        f'--prometheus-port={str(acceptor.port)}',
                     ]))
         else:
             raise ValueError("AutoMultiPaxos only supports hydroflow acceptors")
@@ -301,8 +299,7 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
                 str(input.num_p2a_proxy_leaders_per_leader),
                 '--prometheus-host',
                 leader.host.ip(),
-                '--prometheus-port',
-                str(leader.port)
+                f'--prometheus-port={str(leader.port)}'
             ]))
 
         # Launch coordinators
@@ -317,8 +314,7 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
                 str(input.num_acceptor_partitions),
                 '--prometheus-host',
                 coordinator.host.ip(),
-                '--prometheus-port',
-                str(coordinator.port)
+                f'--prometheus-port={str(coordinator.port)}'
             ]))
         
         # Launch p2a proxy leaders
@@ -333,8 +329,7 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
                 str(input.num_acceptor_partitions),
                 '--prometheus-host',
                 proxy_leader.host.ip(),
-                '--prometheus-port',
-                str(proxy_leader.port)
+                f'--prometheus-port={str(proxy_leader.port)}'
             ]))
 
         # Launch p2b proxy leaders
@@ -357,8 +352,7 @@ class AutoMultiPaxosSuite(benchmark.Suite[Input, Output]):
                     str(input.num_acceptors_per_partition*input.num_acceptor_partitions),
                     '--prometheus-host',
                     proxy_leader.host.ip(),
-                    '--prometheus-port',
-                    str(proxy_leader.port)
+                    f'--prometheus-port={str(proxy_leader.port)}'
                 ]))
 
 

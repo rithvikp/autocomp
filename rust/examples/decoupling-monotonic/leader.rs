@@ -1,5 +1,6 @@
+use bytes::Bytes;
+use frankenpaxos::automicrobenchmarks_proto;
 use hydroflow::bytes::BytesMut;
-use hydroflow::tokio_stream::wrappers::IntervalStream;
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
@@ -13,12 +14,11 @@ use std::rc::Rc;
 use std::{collections::HashMap, convert::TryFrom, io::Cursor};
 
 #[derive(clap::Args, Debug)]
-pub struct LeaderArgs {
-}
+pub struct LeaderArgs {}
 
-fn deserialize(msg: BytesMut) -> Option<(u32,i64,u32,Rc<Vec<u8>>)> {
+fn deserialize(msg: BytesMut) -> Option<(u32, i64, u32, Rc<Vec<u8>>)> {
     //todo unwrap, dummy stuff
-    Some((0,0,0,Rc::new(vec![])))
+    Some((0, 0, 0, Rc::new(vec![])))
 }
 
 fn serialize(id: i64, ballot: u32, payload: Rc<Vec<u8>>) -> bytes::Bytes {
@@ -42,7 +42,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await
         .into_sink();
 
-     // Replica setup
+    // Replica setup
     let to_replica_port = ports
         .remove("send_to$replicas$0")
         .unwrap()
@@ -62,7 +62,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
     let df = datalog!(
         r#"
-        .input replicas `repeat_iter(peers.clone()) -> map(|p| (p,))`
+.input replicas `repeat_iter(peers.clone()) -> map(|p| (p,))`
 .input numReplicas `repeat_iter([(num_replicas,),])`
 
 .async clientIn `null::<(u32,i64,u32,Rc<Vec<u8>>)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1)))`

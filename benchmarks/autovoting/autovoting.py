@@ -133,8 +133,7 @@ class AutoVotingSuite(benchmark.Suite[Input, Output]):
                 'leader',
                 '--prometheus-host',
                 net.prom_placement().leader.host.ip(),
-                '--prometheus-port',
-                str(net.prom_placement().leader.port),
+                f'--prometheus-port={str(net.prom_placement().leader.port)}',
                 '--flush-every-n',
                 str(inp.leader_flush_every_n),
             ])
@@ -149,8 +148,7 @@ class AutoVotingSuite(benchmark.Suite[Input, Output]):
                     'collector',
                     '--prometheus-host',
                     collector.host.ip(),
-                    '--prometheus-port',
-                    str(collector.port),
+                    f'--prometheus-port={str(collector.port)}',
                     '--collector.num-replica-groups',
                     str(inp.num_replica_groups),
                     '--collector.num-replica-partitions',
@@ -167,8 +165,7 @@ class AutoVotingSuite(benchmark.Suite[Input, Output]):
                     'broadcaster',
                     '--prometheus-host',
                     broadcaster.host.ip(),
-                    '--prometheus-port',
-                    str(broadcaster.port),
+                    f'--prometheus-port={str(broadcaster.port)}',
                     '--broadcaster.num-replica-groups',
                     str(inp.num_replica_groups),
                     '--broadcaster.num-replica-partitions',
@@ -187,8 +184,7 @@ class AutoVotingSuite(benchmark.Suite[Input, Output]):
                     str(i),
                     '--prometheus-host',
                     replica.host.ip(),
-                    '--prometheus-port',
-                    str(replica.port),
+                    f'--prometheus-port={str(replica.port)}',
                 ]))
         else:
             raise ValueError("AutoVoting only currently supports hydroflow replicas")

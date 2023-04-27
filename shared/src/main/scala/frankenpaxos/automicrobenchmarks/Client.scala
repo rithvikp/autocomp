@@ -2,6 +2,7 @@ package frankenpaxos.automicrobenchmarks
 
 import collection.mutable
 import com.github.tototoshi.csv.CSVWriter
+import com.google.protobuf.ByteString
 import frankenpaxos.Actor
 import frankenpaxos.Chan
 import frankenpaxos.Logger
@@ -63,8 +64,8 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     val msg = ServerInbound(
       id = id,
       ballot = ballot,
-      payload = payload,
-      signature = ""
+      payload = ByteString.copyFromUtf8(payload),
+      signature = ByteString.copyFromUtf8("")
     )
     promises(id) = promise
 

@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use hydroflow::bytes::BytesMut;
 use hydroflow::tokio_stream::wrappers::IntervalStream;
 use hydroflow::util::{
@@ -13,12 +14,11 @@ use std::rc::Rc;
 use std::{collections::HashMap, convert::TryFrom, io::Cursor};
 
 #[derive(clap::Args, Debug)]
-pub struct LeaderArgs {
-}
+pub struct LeaderArgs {}
 
-fn deserialize(msg: BytesMut) -> Option<(u32,i64,u32,Rc<Vec<u8>>)> {
+fn deserialize(msg: BytesMut) -> Option<(u32, i64, u32, Rc<Vec<u8>>)> {
     //todo unwrap, dummy stuff
-    Some((0,0,0,Rc::new(vec![])))
+    Some((0, 0, 0, Rc::new(vec![])))
 }
 
 fn serialize(id: i64, ballot: u32, payload: Rc<Vec<u8>>) -> bytes::Bytes {

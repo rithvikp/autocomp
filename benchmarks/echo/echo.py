@@ -101,8 +101,7 @@ class EchoSuite(benchmark.Suite[Input, Output]):
                 'server',
                 '--prometheus-host',
                 net.prom_placement().server.host.ip(),
-                '--prometheus-port',
-                str(net.prom_placement().server.port),
+                f'--prometheus-port={str(net.prom_placement().server.port)}',
             ] +
             (['--persist-log'] if inp.persist_log else []))
 
