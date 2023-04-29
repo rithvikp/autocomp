@@ -34,7 +34,7 @@ def main(args) -> None:
                     num_committers=num_committers,
                     num_participant_acker_partitions=num_participant_acker_partitions,
                     num_enders=num_enders,
-                    jvm_heap_size='100m',
+                    jvm_heap_size='8g',
                     duration=datetime.timedelta(seconds=60),
                     timeout=datetime.timedelta(seconds=65),
                     warmup_duration=datetime.timedelta(seconds=25),

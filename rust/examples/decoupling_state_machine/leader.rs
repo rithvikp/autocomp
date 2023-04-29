@@ -33,8 +33,16 @@ fn encrypt_and_serialize(
     key: &RsaPublicKey,
     prev_hash: &mut Rc<RefCell<Vec<u8>>>,
 ) -> bytes::Bytes {
+    println!("payload len {}", payload.len());
     let mut payload_for_prev_hash = payload.as_ref().clone();
     prev_hash.borrow_mut().append(&mut payload_for_prev_hash);
+    let orig_len = prev_hash.borrow().len();
+    println!("cmp len {}", (std::cmp::max(orig_len, 255) - 255));
+    for _ in 0..(std::cmp::max(orig_len, 255) - 255) {
+        // TODO: This is inefficient
+        prev_hash.borrow_mut().remove(0);
+    }
+    println!("len after {}", prev_hash.borrow().len());
     let encrypted_payload: Vec<u8> = key
         .encrypt(rand, Pkcs1v15Encrypt, &prev_hash.borrow())
         .unwrap();

@@ -29,7 +29,7 @@ def main(args) -> None:
                 num_replica_partitions=replica_partitions,
                 num_broadcasters=broadcasters,
                 num_collectors=collectors,
-                jvm_heap_size='100m',
+                jvm_heap_size='8g',
                 warmup_duration=datetime.timedelta(seconds=25),
                 warmup_timeout=datetime.timedelta(seconds=30),
                 warmup_sleep=datetime.timedelta(seconds=5),

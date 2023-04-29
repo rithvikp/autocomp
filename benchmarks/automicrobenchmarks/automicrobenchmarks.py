@@ -33,9 +33,17 @@ class MicrobenchmarkType(enum.Enum):
     DECOUPLING_MUTUALLY_INDEPENDENT = enum.auto()
     DECOUPLING_STATE_MACHINE = enum.auto()
     DECOUPLING_GENERAL = enum.auto()
-
     PARTITIONING_DEPENDENCIES = enum.auto()
     PARTITIONING_PARTIAL = enum.auto()
+
+    AUTO_DECOUPLING_FUNCTIONAL = enum.auto()
+    AUTO_DECOUPLING_MONOTONIC = enum.auto()
+    AUTO_DECOUPLING_MUTUALLY_INDEPENDENT = enum.auto()
+    AUTO_DECOUPLING_STATE_MACHINE = enum.auto()
+    AUTO_DECOUPLING_GENERAL = enum.auto()
+    AUTO_PARTITIONING_DEPENDENCIES = enum.auto()
+    AUTO_PARTITIONING_PARTIAL = enum.auto()
+
 
 class DecouplingMonotonicOptions(NamedTuple):
     num_replicas: int
@@ -79,7 +87,7 @@ Output = benchmark.RecorderOutput
 
 
 # Networks #####################################################################
-class MicrobenchmarksNet:
+class AutoMicrobenchmarksNet:
     def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider]):
         self._input = inp
         self._endpoints = endpoints
@@ -122,15 +130,15 @@ class MicrobenchmarksNet:
         )
 
 # Suite ########################################################################
-class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
+class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
     # To add a new microbenchmark, add a new function following the form of _decoupling_functional,
     # and add a new case to the if-else in run_benchmark. Non-leader/client services cannot be monitored.
     # Add a new options namedtuple if necessary.
     #
-    # Make sure to also update dedalus_microbenchmarks.py to run the new microbenchmark.
+    # Make sure to also update dedalus_.py to run the new microbenchmark.
 
 
-    def _decoupling_functional(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: MicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+    def _decoupling_functional(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: Net) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
         leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [ '--service',
             'leader',
             '--prometheus-host',
@@ -142,7 +150,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients"]}, {"clients": inp.num_client_procs})
 
         prom_endpoints = {
-            'microbenchmarks_leader': [
+            'automicrobenchmarks_leader': [
                 f'{net.prom_placement().leader.host.ip()}:' +
                 f'{net.prom_placement().leader.port}'
             ],
@@ -150,7 +158,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         
         return endpoints, receive_endpoints, prom_endpoints, leader_proc, []
 
-    def _decoupling_monotonic(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: MicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+    def _decoupling_monotonic(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: Net) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
         leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
             '--service',
             'leader',
@@ -177,7 +185,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         }, {"clients": inp.num_client_procs})
 
         prom_endpoints = {
-            'microbenchmarks_leader': [
+            'automicrobenchmarks_leader': [
                 f'{net.prom_placement().leader.host.ip()}:' +
                 f'{net.prom_placement().leader.port}'
             ],
@@ -185,7 +193,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         
         return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs
 
-    def _decoupling_mutually_independent(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: MicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+    def _decoupling_mutually_independent(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: Net) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
         leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
             '--service',
             'leader',
@@ -212,7 +220,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         }, {"clients": inp.num_client_procs})
 
         prom_endpoints = {
-            'microbenchmarks_leader': [
+            'automicrobenchmarks_leader': [
                 f'{net.prom_placement().leader.host.ip()}:' +
                 f'{net.prom_placement().leader.port}'
             ],
@@ -220,7 +228,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         
         return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs
 
-    def _decoupling_state_machine(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: MicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+    def _decoupling_state_machine(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: Net) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
         leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [ '--service',
             'leader',
             '--prometheus-host',
@@ -232,7 +240,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients"]}, {"clients": inp.num_client_procs})
 
         prom_endpoints = {
-            'microbenchmarks_leader': [
+            'automicrobenchmarks_leader': [
                 f'{net.prom_placement().leader.host.ip()}:' +
                 f'{net.prom_placement().leader.port}'
             ],
@@ -240,7 +248,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         
         return endpoints, receive_endpoints, prom_endpoints, leader_proc, []
 
-    def _decoupling_general(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: MicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+    def _decoupling_general(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: Net) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
         leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [ '--service',
             'leader',
             '--prometheus-host',
@@ -252,7 +260,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         endpoints, receive_endpoints = self.provisioner.rebuild(1, {"clients": ["leaders"], "leaders": ["clients"]}, {"clients": inp.num_client_procs})
 
         prom_endpoints = {
-            'microbenchmarks_leader': [
+            'automicrobenchmarks_leader': [
                 f'{net.prom_placement().leader.host.ip()}:' +
                 f'{net.prom_placement().leader.port}'
             ],
@@ -260,7 +268,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         
         return endpoints, receive_endpoints, prom_endpoints, leader_proc, []
 
-    def _partitioning_dependencies(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: MicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+    def _partitioning_dependencies(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: Net) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
         leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
             '--service',
             'leader',
@@ -287,7 +295,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         }, {"clients": inp.num_client_procs})
 
         prom_endpoints = {
-            'microbenchmarks_leader': [
+            'automicrobenchmarks_leader': [
                 f'{net.prom_placement().leader.host.ip()}:' +
                 f'{net.prom_placement().leader.port}'
             ],
@@ -295,7 +303,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         
         return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs
 
-    def _partitioning_partial(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: MicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+    def _partitioning_partial(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: Net) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
         leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
             '--service',
             'leader',
@@ -322,7 +330,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         }, {"clients": inp.num_client_procs})
 
         prom_endpoints = {
-            'microbenchmarks_leader': [
+            'automicrobenchmarks_leader': [
                 f'{net.prom_placement().leader.host.ip()}:' +
                 f'{net.prom_placement().leader.port}'
             ],
@@ -333,7 +341,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
 
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], inp: Input) -> Output:
-        net = MicrobenchmarksNet(inp, self.provisioner.hosts(1))
+        net = AutoMicrobenchmarksNet(inp, self.provisioner.hosts(1))
         bench.log("Reconfiguring the system for a new benchmark")
 
         fn = None
@@ -351,6 +359,20 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
             fn = self._partitioning_dependencies
         elif inp.microbenchmark_type == MicrobenchmarkType.PARTITIONING_PARTIAL:
             fn = self._partitioning_partial
+        elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_DECOUPLING_FUNCTIONAL:
+            fn = self._auto_decoupling_functional
+        elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_DECOUPLING_MONOTONIC:
+            fn = self._auto_decoupling_monotonic
+        elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_DECOUPLING_MUTUALLY_INDEPENDENT:
+            fn = self._auto_decoupling_mutually_independent
+        elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_DECOUPLING_STATE_MACHINE:
+            fn = self._auto_decoupling_state_machine
+        elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_DECOUPLING_GENERAL:
+            fn = self._auto_decoupling_general
+        elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_PARTITIONING_DEPENDENCIES:
+            fn = self._auto_partitioning_dependencies
+        elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_PARTITIONING_PARTIAL:
+            fn = self._auto_partitioning_partial
         else:
             raise NotImplementedError(f"Microbenchmark type {inp.microbenchmark_type} is not implemented")
 
@@ -376,7 +398,7 @@ class MicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         if inp.monitored:
             prometheus_config = prometheus.prometheus_config(
                 int(inp.prometheus_scrape_interval.total_seconds() * 1000), prom_endpoints.update({
-                    'microbenchmarks_client': [
+                    'automicrobenchmarks_client': [
                         f'{e.host.ip()}:{e.port}'
                         for e in net.prom_placement().clients
                     ],
