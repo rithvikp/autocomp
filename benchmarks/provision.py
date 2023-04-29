@@ -365,6 +365,7 @@ class HydroState(State):
             src=str((Path(__file__).parent.parent / "rust").absolute()),
             example=example,
             args = args,
+            # display_id = label,
             on=machine,
         )
         self._services[role].append(receiver)

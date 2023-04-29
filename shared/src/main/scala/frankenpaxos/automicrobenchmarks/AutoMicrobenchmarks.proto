@@ -13,9 +13,21 @@ message ServerInbound {
   required int64 id = 1;
   required uint32 ballot = 2;
   required bytes payload = 3;
-  required bytes signature = 4;
+  required int64 vid = 4;
 }
 
 message ClientInbound {
+  oneof request {
+    ClientReply client_reply = 1;
+    ClientNotification client_notification = 2;
+  }
+}
+
+message ClientReply {
   required int64 id = 1;
+  optional uint32 ballot = 2;
+  optional bytes payload = 3;
+}
+
+message ClientNotification {
 }

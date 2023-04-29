@@ -233,12 +233,15 @@ class Suite(Generic[Input, Output]):
             # A hack for type-checking
             self._args: Any = None
 
-        self.cluster_config = {}
+        if not hasattr(self, 'cluster_config'):
+            self.cluster_config = {}
         self.provisioner = None
 
         if 'cluster_config' in args and args['cluster_config'] is not None:
-            with open(args['cluster_config'], 'r') as f:
-                self.cluster_config = json.load(f)
+            # Microbenchmarks temporarily setup the cluster config directly
+            if self.cluster_config == {}:
+                with open(args['cluster_config'], 'r') as f:
+                    self.cluster_config = json.load(f)
 
             # Provision instances if necessary
             self._f = tempfile.NamedTemporaryFile()   
@@ -248,7 +251,7 @@ class Suite(Generic[Input, Output]):
             self._args.identity_file = self.provisioner.identity_file()
         else:
             assert 'cluster' in args and args['cluster'] is not None, 'Must specify cluster config or cluster'
-            print("Using a manually provisionsed cluster")
+            print("Using a manually provisioned cluster")
             raise ValueError("Temp")
 
 

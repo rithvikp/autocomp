@@ -236,7 +236,7 @@ class AutoTwoPCSuite(benchmark.Suite[Input, Output]):
                     'ender',
                     '--prometheus-host',
                     ender.host.ip(),
-                    f'--prometheus-port="{str(ender.port)}"',
+                    f'--prometheus-port={str(ender.port)}',
                     '--ender.num-participants',
                     str(inp.num_participants),
                 ]))

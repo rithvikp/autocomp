@@ -12,6 +12,8 @@ import scala.concurrent.Future
 import scala.concurrent.Promise
 import scala.scalajs.js.annotation._
 import scala.util.Random
+import javax.crypto.Cipher
+import java.nio.ByteBuffer
 
 @JSExportAll
 object ClientInboundSerializer extends ProtoSerializer[ClientInbound] {
@@ -28,11 +30,12 @@ object Client {
 
 @JSExportAll
 class Client[Transport <: frankenpaxos.Transport[Transport]](
-    srcAddress: Transport#Address,
+    address: Transport#Address,
     dstAddress: Transport#Address,
     transport: Transport,
-    logger: Logger
-) extends Actor(srcAddress, transport, logger) {
+    logger: Logger,
+    cipher: Cipher
+) extends Actor(address, transport, logger) {
   override type InboundMessage = ClientInbound
   override def serializer = Client.serializer
 
@@ -43,29 +46,47 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   private var ballot: Int = 0
   private val promises = mutable.Map[Long, Promise[Unit]]()
 
-  override def receive(src: Transport#Address, reply: InboundMessage): Unit = {
-    promises.get(reply.id) match {
-      case Some(promise) =>
-        promise.success(())
-        promises -= reply.id
-      case None =>
-        logger.fatal(s"Received reply for unpending request ${reply.id}.")
+  override def receive(src: Transport#Address, inbound: InboundMessage): Unit = {
+    System.out.println("Received message")
+    inbound.request match {
+      case ClientInbound.Request.ClientReply(reply) =>
+        promises.get(reply.id) match {
+          case Some(promise) =>
+            promise.success(())
+            promises -= reply.id
+          case None =>
+            logger.fatal(s"Received reply for unpending request ${reply.id}.")
+        }
+
+      case ClientInbound.Request.ClientNotification(notif) => {}
+
+      case ClientInbound.Request.Empty => {
+        logger.fatal("Empty ClientInbound encountered.")
+      }
     }
   }
 
-  def sendImpl(promise: Promise[Unit]): Unit = {
+  def requestImpl(promise: Promise[Unit]): Unit = {
     // 0.5% chance of incrementing the ballot.
     if (Random.nextDouble() < 0.005) {
       ballot += 1
     }
 
-    var payload = Random.nextString(6)
+    var payload = List.fill(1)(Random.nextPrintableChar).mkString
+
+    var paddedPayload = payload.getBytes
+    for (i <- paddedPayload.length until 8) {
+      paddedPayload = paddedPayload :+ 0.toByte
+    }
+    val vid = ByteBuffer.wrap(paddedPayload).getLong()
+
     payload = payload + " " * 10
+
     val msg = ServerInbound(
       id = id,
       ballot = ballot,
-      payload = ByteString.copyFromUtf8(payload),
-      signature = ByteString.copyFromUtf8("")
+      payload = ByteString.copyFrom(cipher.doFinal(payload.getBytes())),
+      vid = vid
     )
     promises(id) = promise
 
@@ -74,9 +95,9 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     id += 1
   }
 
-  def send(): Future[Unit] = {
+  def request(): Future[Unit] = {
     val promise = Promise[Unit]()
-    transport.executionContext.execute(() => sendImpl(promise))
+    transport.executionContext.execute(() => requestImpl(promise))
     promise.future
   }
 }

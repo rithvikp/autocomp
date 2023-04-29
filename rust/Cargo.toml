@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.1.8", features = ["derive"] }
 prometheus_exporter = "0.8.5"
+rsa = "0.9.0"
 # KEEP THIS IN SYNC 
 prometheus = { version = "0.13", features = ["process"] }
 prost = "0.11.8"
