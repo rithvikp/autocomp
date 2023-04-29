@@ -16,11 +16,11 @@ def main(args) -> None:
                     'leaders': 2,
                     'replicas': 3,
                     'clients': 10,
-                    'acceptors': 3*3,
+                    'acceptors': 3*5,
                     # Num coordinators = num logical acceptors
-                    'coordinators': 3,
-                    'p2a_proxy_leaders': 2*3,
-                    'p2b_proxy_leaders': 2*3,
+                    'coordinators': 5,
+                    'p2a_proxy_leaders': 2*5,
+                    'p2b_proxy_leaders': 2*5,
                 },
             }
 
@@ -135,10 +135,10 @@ def main(args) -> None:
                 
                 for value_size in [16]
                 for num_acceptors_per_partition in [3]
-                for num_acceptor_partitions in [3]
+                for num_acceptor_partitions in [5]
                 for num_replicas in [3]
-                for num_p2a_proxy_leaders_per_leader in [3]
-                for num_p2b_proxy_leaders_per_leader in [3]
+                for num_p2a_proxy_leaders_per_leader in [5]
+                for num_p2b_proxy_leaders_per_leader in [5]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
                     (1, 1, 1),
                     (1, 50, 10),
