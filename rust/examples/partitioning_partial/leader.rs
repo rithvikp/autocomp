@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use frankenpaxos::automicrobenchmarks_proto;
 use hydroflow::bytes::BytesMut;
 use hydroflow::tokio_stream::wrappers::IntervalStream;
@@ -53,7 +52,7 @@ fn encrypt_and_serialize(
     return bytes::Bytes::from(buf);
 }
 
-pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
+pub async fn run(_cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let mut rng = rand::thread_rng();
 
     let private_pem = "-----BEGIN RSA PRIVATE KEY-----

@@ -1,13 +1,9 @@
 use bytes::Bytes;
 use frankenpaxos::automicrobenchmarks_proto;
 use hydroflow::bytes::BytesMut;
-use hydroflow::tokio_stream::wrappers::IntervalStream;
-use hydroflow::util::{
-    cli::{
-        launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
-        ConnectedTagged, ServerOrBound,
-    },
-    deserialize_from_bytes, serialize_to_bytes,
+use hydroflow::util::cli::{
+    launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource, ConnectedTagged,
+    ServerOrBound,
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
@@ -35,16 +31,19 @@ fn encrypt_and_serialize(
     payload: Rc<Vec<u8>>,
     rand: &mut ThreadRng,
     key: &RsaPublicKey,
-    prev_hash: RefCell<Rc<Vec<u8>>>,
+    prev_hash: &mut Rc<RefCell<Vec<u8>>>,
 ) -> bytes::Bytes {
-    prev_hash.borrow_mut().append(&mut payload.as_ref());
-    let encrypted_payload: Vec<u8> = key.encrypt(rand, Pkcs1v15Encrypt, &prev_hash.borrow()).unwrap();
-    prev_hash.replace(Rc::new(encrypted_payload));
+    let mut payload_for_prev_hash = payload.as_ref().clone();
+    prev_hash.borrow_mut().append(&mut payload_for_prev_hash);
+    let encrypted_payload: Vec<u8> = key
+        .encrypt(rand, Pkcs1v15Encrypt, &prev_hash.borrow())
+        .unwrap();
+    prev_hash.replace(encrypted_payload.clone());
     let out = automicrobenchmarks_proto::ClientInbound {
         request: Some(
             automicrobenchmarks_proto::client_inbound::Request::ClientReply(
                 automicrobenchmarks_proto::ClientReply {
-                    id: id,
+                    id,
                     ballot: Some(ballot),
                     payload: Some(encrypted_payload),
                 },
@@ -56,7 +55,7 @@ fn encrypt_and_serialize(
     return bytes::Bytes::from(buf);
 }
 
-pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
+pub async fn run(_cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let mut rng = rand::thread_rng();
 
     let private_pem = "-----BEGIN RSA PRIVATE KEY-----
@@ -101,7 +100,7 @@ JQIDAQAB
 
     let public_key = RsaPublicKey::from_public_key_pem(&public_pem.trim()).unwrap();
 
-    let mut prev_hash = RefCell::new(Rc::new(vec![]));
+    let mut prev_hash = Rc::new(RefCell::new(vec![]));
 
     // Client setup
     let client_recv = ports
@@ -121,7 +120,7 @@ JQIDAQAB
     let df = datalog!(
         r#"
         .async clientIn `null::<(u32,i64,u32,Rc<Vec<u8>>)>()` `source_stream(client_recv) -> map(|x| {let input = x.unwrap(); let v = decrypt_and_deserialize(input.1, &private_key); (input.0, v.0, v.1, v.2,)})`
-.async clientOut `map(|(node_id, (id, ballot, payload,))| (node_id, encrypt_and_serialize(id, ballot, payload, &mut rng, &public_key, &prev_hash))) -> dest_sink(client_send)` `null::<(i64,u32,Rc<Vec<u8>>)>()`
+.async clientOut `map(|(node_id, (id, ballot, payload,))| (node_id, encrypt_and_serialize(id, ballot, payload, &mut rng, &public_key, &mut prev_hash))) -> dest_sink(client_send)` `null::<(i64,u32,Rc<Vec<u8>>)>()`
 
 # Buffer inputs, choose 1 at a time.
 clientBuffer(client, id, b, v) :- clientIn(client, id, b, v)

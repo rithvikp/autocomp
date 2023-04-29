@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use hydroflow::util::{
@@ -18,7 +18,9 @@ pub struct ReplicaArgs {
     index: Option<u32>,
 }
 
-fn deserialize_and_hash((client, id, ballot, v): (u32,i64,u32,Rc<Vec<u8>>,)) -> (u32,i64,u32,Rc<Vec<u8>>,u32) {
+fn deserialize_and_hash(
+    (client, id, ballot, v): (u32, i64, u32, Rc<Vec<u8>>),
+) -> (u32, i64, u32, Rc<Vec<u8>>, u32) {
     let mut hasher = DefaultHasher::new();
     v.hash(&mut hasher);
     let hashed = hasher.finish();

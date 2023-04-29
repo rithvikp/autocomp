@@ -47,7 +47,6 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   private val promises = mutable.Map[Long, Promise[Unit]]()
 
   override def receive(src: Transport#Address, inbound: InboundMessage): Unit = {
-    System.out.println("Received message")
     inbound.request match {
       case ClientInbound.Request.ClientReply(reply) =>
         promises.get(reply.id) match {

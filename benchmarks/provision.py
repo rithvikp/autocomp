@@ -120,7 +120,7 @@ class State:
     def cluster_definition(self) -> Dict[str, Dict[str, List[str]]]:
         raise NotImplementedError()
 
-    def popen_hydroflow(self, bench, label: str, f: int, args: List[str]) -> proc.Proc:
+    def popen_hydroflow(self, bench, label: str, f: int, args: List[str], example: Optional[str] = None) -> proc.Proc:
         raise NotImplementedError()
 
     def post_benchmark(self):
@@ -349,13 +349,14 @@ class HydroState(State):
         return role, index
 
     # It is assumed that label is of the form f"{role}_{index}"
-    def popen_hydroflow(self, bench, label: str, f: int, args: List[str]) -> proc.Proc:
+    def popen_hydroflow(self, bench, label: str, f: int, args: List[str], example: Optional[str] = None) -> proc.Proc:
         """Start a new hydroflow program on a free machine.
         """
         role, index = self._parse_label(label)
         assert self._config["services"][role]["type"] == "hydroflow"
 
-        example = self._config["services"][role]["rust_example"]
+        if example is None:
+            example = self._config["services"][role]["rust_example"]
         machine = self._machines[str(f)][role][index]
 
         # FIXME[Hydro CLI]: Pipe stdout/stderr to files

@@ -19,8 +19,7 @@ use std::rc::Rc;
 use std::{collections::HashMap, io::Cursor};
 
 #[derive(clap::Args, Debug)]
-pub struct LeaderArgs {
-}
+pub struct LeaderArgs {}
 
 fn decrypt_and_deserialize(msg: BytesMut, key: &RsaPrivateKey) -> (i64, u32, Rc<Vec<u8>>) {
     let s =
@@ -40,7 +39,7 @@ fn encrypt_and_serialize(
         request: Some(
             automicrobenchmarks_proto::client_inbound::Request::ClientReply(
                 automicrobenchmarks_proto::ClientReply {
-                    id: id,
+                    id,
                     ballot: None,
                     payload: Some(encrypted_payload),
                 },
@@ -52,7 +51,7 @@ fn encrypt_and_serialize(
     return bytes::Bytes::from(buf);
 }
 
-pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
+pub async fn run(_cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let mut rng = rand::thread_rng();
 
     let private_pem = "-----BEGIN RSA PRIVATE KEY-----
@@ -97,7 +96,6 @@ JQIDAQAB
 
     let public_key = RsaPublicKey::from_public_key_pem(&public_pem.trim()).unwrap();
 
-
     // Client setup
     let client_recv = ports
         .remove("receive_from$clients$0")
@@ -113,7 +111,7 @@ JQIDAQAB
         .await
         .into_sink();
 
-     // Replica setup
+    // Replica setup
     let to_replica_port = ports
         .remove("send_to$replicas$0")
         .unwrap()
