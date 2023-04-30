@@ -182,16 +182,15 @@ def main(args) -> None:
                     (False, 1, 3),
                 ]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
-                    # (1, 1, 1),
-                    # (1, 10, 5),
-                    # (5, 10, 10),
-                    # (5, 20, 10),
-                    # (6, 50, 10),
+                    (1, 1, 1),
+                    (1, 10, 5),
+                    (5, 10, 10),
+                    (5, 20, 10),
+                    (6, 50, 10),
                     # (6, 100, 10),
                     # (10, 100, 10),
-                    (10, 5, 10)
                 ]
-            ]#* 3
+            ]* 3
 
         def summary(self, input: Input, output: Output) -> str:
             return str({

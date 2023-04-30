@@ -23,10 +23,6 @@ import frankenpaxos.multipaxos.ReadWriteWorkload
 import frankenpaxos.multipaxos.UniformReadWriteWorkload
 import frankenpaxos.multipaxos.Write
 import frankenpaxos.multipaxos.Read
-import java.security.KeyFactory
-import java.security.interfaces.RSAPublicKey
-import java.security.spec.X509EncodedKeySpec
-import javax.crypto.Cipher
 
 object ClientMain extends App {
   case class Flags(
@@ -77,25 +73,6 @@ object ClientMain extends App {
       throw new IllegalArgumentException("Could not parse flags.")
   }
 
-  val publicPemBytes = """MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3WYRq2ZTa0P+PIy2OKBD
-mkeARauGuQsm8/fekUo8ImSVVdsnrne1XGxad+ykj5fB1Miw6aoCYKkzT5pzNWG7
-gA5XOWUyfvGVfSMcjxl65zXdDeaG03S014dHwZwhdMmnEl2sjRyGEBDT/FRkysoT
-+O+dlF48yvgYpMaVpiQOLpEUSa+FkiqZNd/jn2rT1hwyWaWVnVvcCIWDxdA8X/NO
-sL+pqSSjQm/m9m2JVN+yqMdu1v3gBVLk26bl+MWzjedptqEgK0qNevT0R++E3jgB
-CDHrpRhZ3Dg4ay7FqpsvkyyNdUMaf0yVa7faTCcoPtMv9RDI4NmmWExrSZpAg7g3
-JQIDAQAB"""
-
-  val decodedKey =
-    java.util.Base64.getDecoder().decode(publicPemBytes.replaceAll(System.lineSeparator(), ""))
-
-  val publicKey = KeyFactory
-    .getInstance("RSA")
-    .generatePublic(new X509EncodedKeySpec(decodedKey))
-    .asInstanceOf[RSAPublicKey]
-
-  val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
-  cipher.init(Cipher.ENCRYPT_MODE, publicKey)
-
   // Start the client.
   val logger = new PrintLogger(flags.logLevel)
   val transport = new NettyTcpTransport(logger)
@@ -103,8 +80,7 @@ JQIDAQAB"""
     address = NettyTcpAddress(new InetSocketAddress(flags.host, flags.port)),
     dstAddress = NettyTcpAddress(new InetSocketAddress(flags.leaderHost, flags.leaderPort)),
     transport = transport,
-    logger = logger,
-    cipher = cipher
+    logger = logger
   )
 
   val receiveChans: Unit = for (addr <- flags.receiveAddrs.split(",")) {

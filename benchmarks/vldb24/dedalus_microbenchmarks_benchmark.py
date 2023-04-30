@@ -68,10 +68,11 @@ def main(args) -> None:
 
             clients = [
                 (1, 1),
-                (2, 1),
-                (3, 1),
-                (4, 1),
-                (5, 1),
+                (1, 15),
+                (2, 15),
+                (3, 15),
+                (4, 15),
+                # (5, 1),
                 # (6, 1),
                 # (6, 1),
                 # (7, 1),
@@ -85,15 +86,15 @@ def main(args) -> None:
             ]
 
             if run_decoupling_functional:
-                # inputs.extend([
-                #     Input(
-                #         microbenchmark_type = MicrobenchmarkType.DECOUPLING_FUNCTIONAL,
-                #         num_client_procs = num_client_procs,
-                #         num_clients_per_proc=num_clients_per_proc,
-                #         **system_inputs,
-                #     )
-                #     for (num_client_procs, num_clients_per_proc) in clients
-                # ])
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.DECOUPLING_FUNCTIONAL,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
                 inputs.extend([
                     Input(
                         microbenchmark_type = MicrobenchmarkType.AUTO_DECOUPLING_FUNCTIONAL,

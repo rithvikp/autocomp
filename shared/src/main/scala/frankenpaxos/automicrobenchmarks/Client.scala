@@ -14,6 +14,13 @@ import scala.scalajs.js.annotation._
 import scala.util.Random
 import javax.crypto.Cipher
 import java.nio.ByteBuffer
+import javax.crypto.Cipher
+import javax.crypto.SecretKey
+import java.security.KeyFactory
+import javax.crypto.spec.SecretKeySpec
+import javax.crypto.spec.IvParameterSpec
+import javax.xml.bind.DatatypeConverter
+import javax.crypto.spec.GCMParameterSpec
 
 @JSExportAll
 object ClientInboundSerializer extends ProtoSerializer[ClientInbound] {
@@ -33,8 +40,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     address: Transport#Address,
     dstAddress: Transport#Address,
     transport: Transport,
-    logger: Logger,
-    cipher: Cipher
+    logger: Logger
 ) extends Actor(address, transport, logger) {
   override type InboundMessage = ClientInbound
   override def serializer = Client.serializer
@@ -46,9 +52,24 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   private var ballot: Int = 0
   private val promises = mutable.Map[Long, Promise[Unit]]()
 
+  private val symmetricKeyBytes = DatatypeConverter.parseHexBinary(
+    "bfeed277024d4700c7edf24127858917"
+  )
+
+  val key = new SecretKeySpec(symmetricKeyBytes, "AES")
+
+  private val iv = new IvParameterSpec("unique nonce".getBytes())
+  private val gcmParams = new GCMParameterSpec(128, iv.getIV())
+
   private val payloads = for (i <- 33 until 127) yield {
     val payload = List.fill(1)(i.toChar).mkString
-    ByteString.copyFrom(cipher.doFinal((payload + " " * 10).getBytes))
+    var encryptedPayload = (payload + " " * 10).getBytes
+    for (i <- 0 until 100) yield {
+      val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+      cipher.init(Cipher.ENCRYPT_MODE, key, gcmParams)
+      encryptedPayload = cipher.doFinal(encryptedPayload)
+    }
+    ByteString.copyFrom(encryptedPayload)
   }
 
   override def receive(src: Transport#Address, inbound: InboundMessage): Unit = {

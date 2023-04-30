@@ -19,7 +19,7 @@ def main(args) -> None:
                     'committers': 3,
                     'participant_ackers': 3*3,
                     'enders': 3,
-                    'clients': 10,
+                    'clients': 3,
                 },
             }
         
