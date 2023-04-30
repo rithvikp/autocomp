@@ -6,15 +6,15 @@ use hydroflow::util::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
         ConnectedTagged, ServerOrBound,
     },
-    serialize_to_bytes, deserialize_from_bytes,
+    deserialize_from_bytes,
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
 use rand::rngs::ThreadRng;
 use rsa::pkcs8::DecodePublicKey;
-use rsa::{RsaPublicKey, Pkcs1v15Encrypt};
+use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
+use std::collections::HashMap;
 use std::rc::Rc;
-use std::{collections::HashMap, io::Cursor};
 
 #[derive(clap::Args, Debug)]
 pub struct ResponderArgs {}
@@ -26,13 +26,12 @@ fn encrypt_and_serialize(
     rand: &mut ThreadRng,
     key: &RsaPublicKey,
 ) -> bytes::Bytes {
-    println!("payload: '{}'", std::str::from_utf8(&payload).unwrap());
     let encrypted_payload: Vec<u8> = key.encrypt(rand, Pkcs1v15Encrypt, &payload).unwrap();
     let out = automicrobenchmarks_proto::ClientInbound {
         request: Some(
             automicrobenchmarks_proto::client_inbound::Request::ClientReply(
                 automicrobenchmarks_proto::ClientReply {
-                    id: id,
+                    id,
                     ballot: Some(ballot),
                     payload: Some(encrypted_payload),
                 },

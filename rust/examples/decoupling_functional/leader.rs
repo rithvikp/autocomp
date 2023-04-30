@@ -35,7 +35,7 @@ fn encrypt_and_serialize(
         request: Some(
             automicrobenchmarks_proto::client_inbound::Request::ClientReply(
                 automicrobenchmarks_proto::ClientReply {
-                    id
+                    id,
                     ballot: Some(ballot),
                     payload: Some(encrypted_payload),
                 },

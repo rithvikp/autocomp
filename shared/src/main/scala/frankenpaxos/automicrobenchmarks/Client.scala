@@ -46,6 +46,11 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   private var ballot: Int = 0
   private val promises = mutable.Map[Long, Promise[Unit]]()
 
+  private val payloads = for (i <- 33 until 127) yield {
+    val payload = List.fill(1)(i.toChar).mkString
+    ByteString.copyFrom(cipher.doFinal((payload + " " * 10).getBytes))
+  }
+
   override def receive(src: Transport#Address, inbound: InboundMessage): Unit = {
     inbound.request match {
       case ClientInbound.Request.ClientReply(reply) =>
@@ -71,21 +76,13 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       ballot += 1
     }
 
-    var payload = List.fill(1)(Random.nextPrintableChar).mkString
-
-    var paddedPayload = payload.getBytes
-    for (i <- paddedPayload.length until 8) {
-      paddedPayload = paddedPayload :+ 0.toByte
-    }
-    val vid = ByteBuffer.wrap(paddedPayload).getLong()
-
-    payload = payload + " " * 10
+    val payloadIndex = Random.nextInt(payloads.size)
 
     val msg = ServerInbound(
       id = id,
       ballot = ballot,
-      payload = ByteString.copyFrom(cipher.doFinal(payload.getBytes())),
-      vid = vid
+      payload = payloads(payloadIndex),
+      vid = payloadIndex
     )
     promises(id) = promise
 

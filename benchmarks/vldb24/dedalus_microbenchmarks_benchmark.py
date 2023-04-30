@@ -28,7 +28,7 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'clients': 7,
+                    'clients': 5,
                     'replicas': 3,
                     'responders': 1,
                     'collectors': 1,
@@ -57,6 +57,7 @@ def main(args) -> None:
             )
             inputs = []
 
+            # Set these as necessary to run the correct set of microbenchmarks.
             run_decoupling_functional = True
             run_decoupling_monotonic = False
             run_decoupling_mutually_independent = False
@@ -67,11 +68,11 @@ def main(args) -> None:
 
             clients = [
                 (1, 1),
-                (1, 10),
-                (2, 10),
-                (3, 10),
-                (4, 10),
-                (5, 10),
+                (2, 1),
+                (3, 1),
+                (4, 1),
+                (5, 1),
+                # (6, 1),
                 # (6, 1),
                 # (7, 1),
                 # (4, 15),
@@ -84,15 +85,15 @@ def main(args) -> None:
             ]
 
             if run_decoupling_functional:
-                inputs.extend([
-                    Input(
-                        microbenchmark_type = MicrobenchmarkType.DECOUPLING_FUNCTIONAL,
-                        num_client_procs = num_client_procs,
-                        num_clients_per_proc=num_clients_per_proc,
-                        **system_inputs,
-                    )
-                    for (num_client_procs, num_clients_per_proc) in clients
-                ])
+                # inputs.extend([
+                #     Input(
+                #         microbenchmark_type = MicrobenchmarkType.DECOUPLING_FUNCTIONAL,
+                #         num_client_procs = num_client_procs,
+                #         num_clients_per_proc=num_clients_per_proc,
+                #         **system_inputs,
+                #     )
+                #     for (num_client_procs, num_clients_per_proc) in clients
+                # ])
                 inputs.extend([
                     Input(
                         microbenchmark_type = MicrobenchmarkType.AUTO_DECOUPLING_FUNCTIONAL,
