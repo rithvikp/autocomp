@@ -13,9 +13,9 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'replicas': 7*5, # Max across any benchmark
-                    'collectors': 5, # Max across any benchmark
-                    'broadcasters': 5, # Max across any benchmark
+                    'replicas': 7*3, # Max across any benchmark
+                    'collectors': 3, # Max across any benchmark
+                    'broadcasters': 3, # Max across any benchmark
                     'clients': 10,
                 },
             }
@@ -29,7 +29,7 @@ def main(args) -> None:
                 num_replica_partitions=replica_partitions,
                 num_broadcasters=broadcasters,
                 num_collectors=collectors,
-                jvm_heap_size='8g',
+                jvm_heap_size='100m',
                 warmup_duration=datetime.timedelta(seconds=25),
                 warmup_timeout=datetime.timedelta(seconds=30),
                 warmup_sleep=datetime.timedelta(seconds=5),
@@ -52,9 +52,9 @@ def main(args) -> None:
             )
 
             for replica_groups in [7]
-            for replica_partitions in [5]
-            for collectors in [5]
-            for broadcasters in [5]
+            for replica_partitions in [3]
+            for collectors in [3]
+            for broadcasters in [3]
             for leader_flush_every_n in [15]
             for (num_client_procs, num_clients_per_proc) in [
                 (1, 1),

@@ -33,7 +33,7 @@ def main(args) -> None:
     if len(args.results) > len(markers):
         raise Exception('List more matplotlib markers to match the number of results')
     
-    fig, ax = plt.subplots(1, 1, figsize=(6.4, 4.0))
+    fig, ax = plt.subplots(1, 1, figsize=(8, 3))
     
     for i, (result, title) in enumerate(zip(args.results, args.titles)):
         dfs = pd.read_csv(result)
@@ -49,10 +49,18 @@ def main(args) -> None:
     ax.set_title('')
     ax.set_xlabel('Throughput (thousands of commands per second)')
     ax.set_ylabel('Median latency (ms)')
-    ax.legend(loc='upper right')
+    # ax.legend(loc='upper')
     ax.grid()
     fig.savefig(args.output, bbox_inches='tight')
     print(f'Wrote plot to {args.output}.')
+
+    fig_leg = plt.figure(figsize=(len(args.titles)*3, 0.5))
+    ax_leg = fig_leg.add_subplot(111)
+    # add the legend from the previous axes
+    ax_leg.legend(*ax.get_legend_handles_labels(), loc='center', ncol=len(args.titles))
+    # hide the axes frame and the x/y labels
+    ax_leg.axis('off')
+    fig_leg.savefig('legend.pdf')
 
 
 def get_parser() -> argparse.ArgumentParser:

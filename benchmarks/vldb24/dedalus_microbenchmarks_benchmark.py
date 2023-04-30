@@ -14,6 +14,8 @@ def main(args) -> None:
                 'clients': { 'type': 'scala' },
                 'leaders': { 'type': 'hydroflow' },
                 'replicas': { 'type': 'hydroflow' },
+                'responders': { 'type': 'hydroflow' },
+                'collectors': { 'type': 'hydroflow' },
             }
 
             super().__init__()
@@ -26,22 +28,24 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'clients': 10,
+                    'clients': 7,
                     'replicas': 3,
+                    'responders': 1,
+                    'collectors': 1,
                 },
             }
 
         def inputs(self) -> Collection[Input]:
             system_inputs = dict(
                 jvm_heap_size='8g',
-                duration=datetime.timedelta(seconds=60),
-                timeout=datetime.timedelta(seconds=65),
-                warmup_duration=datetime.timedelta(seconds=25),
-                warmup_timeout=datetime.timedelta(seconds=30),
-                # duration=datetime.timedelta(seconds=10),
-                # timeout=datetime.timedelta(seconds=15),
-                # warmup_duration=datetime.timedelta(seconds=10),
-                # warmup_timeout=datetime.timedelta(seconds=15),
+                # duration=datetime.timedelta(seconds=60),
+                # timeout=datetime.timedelta(seconds=65),
+                # warmup_duration=datetime.timedelta(seconds=25),
+                # warmup_timeout=datetime.timedelta(seconds=30),
+                duration=datetime.timedelta(seconds=10),
+                timeout=datetime.timedelta(seconds=15),
+                warmup_duration=datetime.timedelta(seconds=10),
+                warmup_timeout=datetime.timedelta(seconds=15),
                 warmup_sleep=datetime.timedelta(seconds=5),
                 # Need a large lag in order for Prometheus to initialize correctly
                 client_lag=datetime.timedelta(seconds=10),
@@ -53,13 +57,25 @@ def main(args) -> None:
             )
             inputs = []
 
+            run_decoupling_functional = True
+            run_decoupling_monotonic = False
+            run_decoupling_mutually_independent = False
+            run_decoupling_state_machine = False
+            run_decoupling_general = False
+            run_partitioning_dependencies = False
+            run_partitioning_partial = False
+
             clients = [
                 (1, 1),
-                (1, 25),
-                (2, 25),
-                (3, 25),
-                (4, 25),
-                (5, 25),
+                (1, 10),
+                (2, 10),
+                (3, 10),
+                (4, 10),
+                (5, 10),
+                # (6, 1),
+                # (7, 1),
+                # (4, 15),
+                # (5, 25),
                 # (6, 25),
                 # (7, 25),
                 # (8, 25),
@@ -67,91 +83,129 @@ def main(args) -> None:
                 # (10, 100),
             ]
 
-            inputs.extend([
-                Input(
-                    microbenchmark_type = MicrobenchmarkType.DECOUPLING_FUNCTIONAL,
-                    num_client_procs = num_client_procs,
-                    num_clients_per_proc=num_clients_per_proc,
-                    **system_inputs,
-                )
-                for (num_client_procs, num_clients_per_proc) in clients
-            ])
+            if run_decoupling_functional:
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.DECOUPLING_FUNCTIONAL,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.AUTO_DECOUPLING_FUNCTIONAL,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
 
-            inputs.extend([
-                Input(
-                    microbenchmark_type = MicrobenchmarkType.DECOUPLING_MONOTONIC,
-                    num_client_procs = num_client_procs,
-                    num_clients_per_proc=num_clients_per_proc,
-                    decoupling_monotonic_options=DecouplingMonotonicOptions(
-                        num_replicas=3,
-                    ),
-                    **system_inputs,
-                )
-                for (num_client_procs, num_clients_per_proc) in clients
-            ])
+            if run_decoupling_monotonic:
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.DECOUPLING_MONOTONIC,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        decoupling_monotonic_options=DecouplingMonotonicOptions(
+                            num_replicas=3,
+                        ),
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.AUTO_DECOUPLING_MONOTONIC,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        decoupling_monotonic_options=DecouplingMonotonicOptions(
+                            num_replicas=3,
+                        ),
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
 
-            inputs.extend([
-                Input(
-                    microbenchmark_type = MicrobenchmarkType.DECOUPLING_MUTUALLY_INDEPENDENT,
-                    num_client_procs = num_client_procs,
-                    num_clients_per_proc=num_clients_per_proc,
-                    decoupling_mutually_independent_options=DecouplingMutuallyIndependentOptions(
-                        num_replicas=3,
-                    ),
-                    **system_inputs,
-                )
-                for (num_client_procs, num_clients_per_proc) in clients
-            ])
+            if run_decoupling_mutually_independent:
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.DECOUPLING_MUTUALLY_INDEPENDENT,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        decoupling_mutually_independent_options=DecouplingMutuallyIndependentOptions(
+                            num_replicas=3,
+                        ),
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.AUTO_DECOUPLING_MUTUALLY_INDEPENDENT,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        decoupling_mutually_independent_options=DecouplingMutuallyIndependentOptions(
+                            num_replicas=3,
+                        ),
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
 
-            # inputs.extend([
-            #     Input(
-            #         microbenchmark_type = MicrobenchmarkType.DECOUPLING_STATE_MACHINE,
-            #         num_client_procs = num_client_procs,
-            #         num_clients_per_proc=num_clients_per_proc,
-            #         **system_inputs,
-            #     )
-            #     for (num_client_procs, num_clients_per_proc) in [(2,25)]
-            # ])
+            if run_decoupling_state_machine:
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.DECOUPLING_STATE_MACHINE,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
 
-            # inputs.extend([
-            #     Input(
-            #         microbenchmark_type = MicrobenchmarkType.DECOUPLING_GENERAL,
-            #         num_client_procs = num_client_procs,
-            #         num_clients_per_proc=num_clients_per_proc,
-            #         **system_inputs,
-            #     )
-            #     for (num_client_procs, num_clients_per_proc) in clients
-            # ])
+            if run_decoupling_general:
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.DECOUPLING_GENERAL,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
 
-            inputs.extend([
-                Input(
-                    microbenchmark_type = MicrobenchmarkType.PARTITIONING_DEPENDENCIES,
-                    num_client_procs = num_client_procs,
-                    num_clients_per_proc=num_clients_per_proc,
-                    partitioning_dependencies_options=PartitioningDependenciesOptions(
-                        num_replicas=3,
-                    ),
-                    **system_inputs,
-                )
-                for (num_client_procs, num_clients_per_proc) in clients
-            ])
+            if run_partitioning_dependencies:
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.PARTITIONING_DEPENDENCIES,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        partitioning_dependencies_options=PartitioningDependenciesOptions(
+                            num_replicas=3,
+                        ),
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
 
-            inputs.extend([
-                Input(
-                    microbenchmark_type = MicrobenchmarkType.PARTITIONING_PARTIAL,
-                    num_client_procs = num_client_procs,
-                    num_clients_per_proc=num_clients_per_proc,
-                    partitioning_partial_options=PartitioningPartialOptions(
-                        num_replicas=3,
-                    ),
-                    **system_inputs,
-                )
-                for (num_client_procs, num_clients_per_proc) in clients
-            ])
+            if run_partitioning_partial:
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.PARTITIONING_PARTIAL,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        partitioning_partial_options=PartitioningPartialOptions(
+                            num_replicas=3,
+                        ),
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in clients
+                ])
 
-            # Add new inputs here
-
-            return inputs
+            return inputs #*3
 
                 
 

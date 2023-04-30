@@ -1,0 +1,4 @@
+#!/bin/bash
+python plot.py --results voting_lt/base.csv voting_lt/scale1.csv voting_lt/scale3.csv voting_lt/scale5.csv --titles "Base" "1 partition" "3 partitions" "5 partitions" --output eval-voting-lt.pdf
+python plot.py --results twopc_lt/base.csv twopc_lt/scale1.csv twopc_lt/scale3.csv twopc_lt/scale5.csv --titles "Base" "1 partition" "3 partitions" "5 partitions" --output eval-2pc-lt.pdf
+python plot.py --results multipaxos_lt/base.csv multipaxos_lt/scale1.csv multipaxos_lt/scale3.csv multipaxos_lt/scale5.csv --titles "Base" "1 partition" "3 partitions" "5 partitions" --output eval-paxos-lt.pdf

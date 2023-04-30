@@ -24,7 +24,7 @@ def main(args) -> None:
                     num_client_procs = num_client_procs,
                     num_clients_per_proc=num_clients_per_proc,
                     num_replicas=num_replicas,
-                    jvm_heap_size='8g',
+                    jvm_heap_size='100m',
                     duration=datetime.timedelta(seconds=60),
                     timeout=datetime.timedelta(seconds=65),
                     warmup_duration=datetime.timedelta(seconds=25),

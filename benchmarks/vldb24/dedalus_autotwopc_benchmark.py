@@ -14,11 +14,11 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'vote_requesters': 5,
-                    'participant_voters': 3*5,
-                    'committers': 5,
-                    'participant_ackers': 3*5,
-                    'enders': 5,
+                    'vote_requesters': 3,
+                    'participant_voters': 3*3,
+                    'committers': 3,
+                    'participant_ackers': 3*3,
+                    'enders': 3,
                     'clients': 10,
                 },
             }
@@ -34,7 +34,7 @@ def main(args) -> None:
                     num_committers=num_committers,
                     num_participant_acker_partitions=num_participant_acker_partitions,
                     num_enders=num_enders,
-                    jvm_heap_size='8g',
+                    jvm_heap_size='100m',
                     duration=datetime.timedelta(seconds=60),
                     timeout=datetime.timedelta(seconds=65),
                     warmup_duration=datetime.timedelta(seconds=25),
@@ -63,20 +63,20 @@ def main(args) -> None:
                     (1, 100),
                     (2, 100),
                     (3, 100),
-                    (4, 100),
-                    (5, 100),
-                    (6, 100),
-                    (7, 100),
-                    (8, 100),
-                    (9, 100),
-                    (10, 100),
+                    # (4, 100),
+                    # (5, 100),
+                    # (6, 100),
+                    # (7, 100),
+                    # (8, 100),
+                    # (9, 100),
+                    # (10, 100),
                 ]
                 for num_participants in [3]
-                for num_vote_requesters in [5]
-                for num_participant_voter_partitions in [5]
-                for num_committers in [5]
-                for num_participant_acker_partitions in [5]
-                for num_enders in [5]
+                for num_vote_requesters in [3]
+                for num_participant_voter_partitions in [3]
+                for num_committers in [3]
+                for num_participant_acker_partitions in [3]
+                for num_enders in [3]
                 for leader_flush_every_n in [1] #[15,1]
             ] *3
 
