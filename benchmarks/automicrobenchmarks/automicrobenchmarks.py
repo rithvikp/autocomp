@@ -63,6 +63,7 @@ class PartitioningCohashingOptions(NamedTuple):
 
 class PartitioningPartialOptions(NamedTuple):
     num_replicas: int
+    num_partitions_per_replica: int = None
 
 # Input/Output #################################################################
 class Input(NamedTuple):
@@ -284,7 +285,7 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
             net.prom_placement().leader.host.ip(),
             f'--prometheus-port={str(net.prom_placement().leader.port)}',
         ],
-        example="decoupling_mutually_independent")
+        example="partitioning_cohashing")
 
         replica_procs: List[proc.Proc] = []
         for i in range(inp.partitioning_cohashing_options.num_replicas):
@@ -294,7 +295,7 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
                 '--index',
                 str(i),
             ],
-            example="decoupling_mutually_independent"))
+            example="partitioning_cohashing"))
         
         endpoints, receive_endpoints = self.provisioner.rebuild(1, {
             "clients": ["leaders"],
@@ -614,6 +615,58 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         }
         
         return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs
+
+    def _auto_partitioning_partial(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: AutoMicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+        assert inp.partitioning_partial_options.num_partitions_per_replica is not None
+
+        leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
+            '--service',
+            'leader',
+            '--leader.num-replica-partitions',
+            str(inp.partitioning_partial_options.num_partitions_per_replica),
+            '--leader.num-replicas',
+            str(inp.partitioning_partial_options.num_replicas),
+            '--prometheus-host',
+            net.prom_placement().leader.host.ip(),
+            f'--prometheus-port={str(net.prom_placement().leader.port)}',
+        ],
+        example="auto_partitioning_partial")
+
+        replica_procs: List[proc.Proc] = []
+        for i in range(inp.partitioning_partial_options.num_replicas * inp.partitioning_partial_options.num_partitions_per_replica):
+            partition_index = i % inp.partitioning_partial_options.num_partitions_per_replica
+            replica_procs.append(self.provisioner.popen_hydroflow(bench, f'replicas_{i}', 1, [
+                '--service',
+                'replica',
+                '--index',
+                str(i),
+                '--replica.partition-index',
+                str(partition_index),
+            ],
+            example="auto_partitioning_partial"))
+
+        coordinator_proc = self.provisioner.popen_hydroflow(bench, 'coordinators', 1, [
+            '--service',
+            'coordinator',
+        ],
+        example="auto_partitioning_partial")
+        
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {
+            "clients": ["leaders"],
+            "leaders": ["clients", "replicas", "replicas"],
+            "replicas": ["leaders", "coordinators"],
+            "coordinators": ["replicas"],
+        }, {"clients": inp.num_client_procs})
+
+        prom_endpoints = {
+            'automicrobenchmarks_leader': [
+                f'{net.prom_placement().leader.host.ip()}:' +
+                f'{net.prom_placement().leader.port}'
+            ],
+        }
+        
+        return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs + [coordinator_proc]
+
 
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], inp: Input) -> Output:

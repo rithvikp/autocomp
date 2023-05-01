@@ -73,10 +73,10 @@ class EndpointProvider:
         if sender == -1:
             sender = 0
         if self._endpoints_set is not None:
-            assert  receiver_end_index <= len(self._endpoints_set[sender])
+            assert  receiver_end_index <= len(self._endpoints_set[sender]), "Insufficient nodes were allocated"
             return self._endpoints_set[sender][0:receiver_end_index]
         
-        assert receiver_end_index <= len(self._endpoints)
+        assert receiver_end_index <= len(self._endpoints), "Insufficient nodes were allocated"
         return self._endpoints[0:receiver_end_index]
 
     def _get_range_single(self, receiver_end_index: int) -> List[host.PartialEndpoint]:
@@ -85,7 +85,7 @@ class EndpointProvider:
             assert receiver_end_index <= len(self._endpoints_set[0])
             return self._endpoints_set[0][0:receiver_end_index]
 
-        assert receiver_end_index <= len(self._endpoints)
+        assert receiver_end_index <= len(self._endpoints), "Insufficient nodes were allocated"
         return self._endpoints[0:receiver_end_index]
     
 

@@ -1,7 +1,3 @@
-use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use hydroflow::bytes::BytesMut;
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
@@ -10,25 +6,24 @@ use hydroflow::util::{
     deserialize_from_bytes, serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
-use std::rc::Rc;
+use std::collections::HashMap;
 
 #[derive(clap::Args, Debug)]
-pub struct CoordinatorArgs {
-}
+pub struct CoordinatorArgs {}
 
-pub async fn run(cfg: CoordinatorArgs, mut ports: HashMap<String, ServerOrBound>) {
+pub async fn run(_cfg: CoordinatorArgs, mut ports: HashMap<String, ServerOrBound>) {
+    let from_coordinator = ports
+        .remove("send_to$replicas$0")
+        .unwrap()
+        .connect::<ConnectedDemux<ConnectedBidi>>()
+        .await;
+
     let to_coordinator_source = ports
         .remove("receive_from$replicas$0")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
-
-    let from_coordinator = ports
-        .remove("send_to$replicas$0")
-        .unwrap()
-        .connect::<ConnectedDemux<ConnectedBidi>>()
-        .await;
 
     let partitions = from_coordinator.keys.clone();
     let num_partitions = partitions.len();

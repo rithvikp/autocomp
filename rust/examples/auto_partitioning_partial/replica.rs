@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use aes_gcm::{aead::Aead, aead::KeyInit, Aes128Gcm, Nonce};
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
@@ -7,6 +7,7 @@ use hydroflow::util::{
     deserialize_from_bytes, serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(clap::Args, Debug)]
@@ -18,7 +19,23 @@ pub struct ReplicaArgs {
     replica_partition_index: Option<u32>,
 }
 
+fn serialize(
+    (node_id, client, id, ballot, v): (u32, u32, i64, u32, Rc<Vec<u8>>),
+    cipher: &Aes128Gcm,
+) -> (u32, u32, i64, u32, Rc<Vec<u8>>) {
+    println!("serialize {} {}", id, ballot);
+    let iv = Nonce::from_slice(b"unique nonce");
+    let mut encrypted_payload = v.as_ref().clone();
+    for _ in 0..100 {
+        encrypted_payload = cipher.encrypt(iv, encrypted_payload.as_slice()).unwrap();
+    }
+    return (node_id, client, id, ballot, Rc::new(encrypted_payload));
+}
+
 pub async fn run(cfg: ReplicaArgs, mut ports: HashMap<String, ServerOrBound>) {
+    let key_bytes = hex::decode("bfeed277024d4700c7edf24127858917").unwrap();
+    let cipher = Aes128Gcm::new_from_slice(key_bytes.as_slice()).unwrap();
+
     let to_replica_source = ports
         .remove("receive_from$leaders$0")
         .unwrap()
@@ -66,13 +83,15 @@ pub async fn run(cfg: ReplicaArgs, mut ports: HashMap<String, ServerOrBound>) {
         .input partitionID `repeat_iter([(partition_id,),])` # ID scheme: Assuming n partitions. Acceptor i has partitions from i*n to (i+1)*n-1.
         .input leader `repeat_iter(peers.clone()) -> map(|p| (p,))`
         .input coordinator `repeat_iter(coordinator.clone()) -> map(|p| (p,))`
+        .input startBallot `repeat_iter([(0 as u32,),])`
         
         .async ballotToReplicaU `null::<(u32,)>()` `source_stream(ballot_to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,)>(x.unwrap().1).unwrap())`
         .async voteToReplicaU `null::<(u32,i64,u32,Rc<Vec<u8>>,)>()` `source_stream(to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,i64,u32,Rc<Vec<u8>>,)>(x.unwrap().1).unwrap())`
-        .async voteFromReplica `map(|(node_id, v): (u32, (u32,u32,i64,u32,Rc<Vec<u8>>,))| (node_id, serialize_to_bytes(v))) -> dest_sink(from_replica_sink)` `null::<(u32,u32,i64,u32,Rc<Vec<u8>>,)>()`
+        .async voteFromReplica `map(|(node_id, v): (u32, (u32,u32,i64,u32,Rc<Vec<u8>>,))| (node_id, serialize_to_bytes(serialize(v, &cipher)))) -> dest_sink(from_replica_sink)` `null::<(u32,u32,i64,u32,Rc<Vec<u8>>,)>()`
         .async fromCoordinatorU `null::<(u32,u32)>()` `source_stream(from_coordinator_source) -> map(|x| deserialize_from_bytes::<(u32,u32,)>(x.unwrap().1).unwrap())`
         .async toCoordinator `map(|(node_id, v): (u32, (u32,u32))| (node_id, serialize_to_bytes(v))) -> dest_sink(to_coordinator_sink)` `null::<(u32,u32)>()`
         
+        ballots(b) :- startBallot(b)
         ballots(b) :+ ballots(b)
         ballots(b) :- ballotToReplicaSealed(o, b)
         MaxBallot(max(b)) :- ballots(b)

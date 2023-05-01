@@ -17,7 +17,6 @@ fn decrypt_and_deserialize(msg: BytesMut, cipher: &Aes128Gcm) -> (i64, u32, Rc<V
     let iv = Nonce::from_slice(b"unique nonce");
     let s =
         automicrobenchmarks_proto::ServerInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
-
     let mut decrypted_payload = s.payload.clone();
     for _ in 0..100 {
         decrypted_payload = cipher.decrypt(iv, decrypted_payload.as_ref()).unwrap();

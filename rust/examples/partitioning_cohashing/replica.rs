@@ -18,15 +18,15 @@ pub struct ReplicaArgs {
 }
 
 fn serialize(
-    (node_id, client, id, ballot, v): (u32, u32, i64, u32, Rc<Vec<u8>>),
+    (node_id, client, id, v): (u32, u32, i64, Rc<Vec<u8>>),
     cipher: &Aes128Gcm,
-) -> (u32, u32, i64, u32, Rc<Vec<u8>>) {
+) -> (u32, u32, i64, Rc<Vec<u8>>) {
     let iv = Nonce::from_slice(b"unique nonce");
     let mut encrypted_payload = v.as_ref().clone();
     for _ in 0..100 {
         encrypted_payload = cipher.encrypt(iv, encrypted_payload.as_slice()).unwrap();
     }
-    return (node_id, client, id, ballot, Rc::new(encrypted_payload));
+    return (node_id, client, id, Rc::new(encrypted_payload));
 }
 
 pub async fn run(cfg: ReplicaArgs, mut ports: HashMap<String, ServerOrBound>) {
@@ -35,13 +35,6 @@ pub async fn run(cfg: ReplicaArgs, mut ports: HashMap<String, ServerOrBound>) {
 
     let to_replica_source = ports
         .remove("receive_from$leaders$0")
-        .unwrap()
-        .connect::<ConnectedTagged<ConnectedBidi>>()
-        .await
-        .into_source();
-
-    let ballot_to_replica_source = ports
-        .remove("receive_from$leaders$1")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
@@ -61,21 +54,13 @@ pub async fn run(cfg: ReplicaArgs, mut ports: HashMap<String, ServerOrBound>) {
     let df = datalog!(
         r#"
         .input myID `repeat_iter(my_id.clone()) -> map(|p| (p,))`
-        .input leader `repeat_iter(peers.clone()) -> map(|p| (p,))`
-        .input startBallot `repeat_iter([(0 as u32,),])`
-        
-        .async ballotToReplica `null::<(u32,)>()` `source_stream(ballot_to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,)>(x.unwrap().1).unwrap())`
-        .async voteToReplica `null::<(u32,i64,u32,Rc<Vec<u8>>,)>()` `source_stream(to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,i64,u32,Rc<Vec<u8>>,)>(x.unwrap().1).unwrap())`
-        .async voteFromReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(serialize(v, &cipher)))) -> dest_sink(from_replica_sink)` `null::<(u32,u32,i64,u32,Rc<Vec<u8>>,)>()`
-        
-        ballots(b) :- startBallot(b)
-        ballots(b) :+ ballots(b)
-        ballots(b) :- ballotToReplica(b)
-        MaxBallot(max(b)) :- ballots(b)
-                    
-        .persist storage
-        storage(v) :- voteToReplica(client, id, b, v) 
-        voteFromReplica@addr(i, client, id, b, v) :~ voteToReplica(client, id, _, v), MaxBallot(b), leader(addr), myID(i)
+.input leader `repeat_iter(peers.clone()) -> map(|p| (p,))`
+.async voteToReplica `null::<(u32,i64,Rc<Vec<u8>>,)>()` `source_stream(to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,i64,Rc<Vec<u8>>,)>(x.unwrap().1).unwrap())`
+.async voteFromReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(serialize(v, &cipher)))) -> dest_sink(from_replica_sink)` `null::<(u32,u32,i64,Rc<Vec<u8>>,)>()`
+            
+.persist storage
+storage(v) :- voteToReplica(client, id, v) 
+voteFromReplica@addr(i, client, id, v) :~ voteToReplica(client, id, v), leader(addr), myID(i)
         "#
     );
 
