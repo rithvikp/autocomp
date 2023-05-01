@@ -48,21 +48,21 @@ class MicrobenchmarkType(enum.Enum):
 
 
 class DecouplingMonotonicOptions(NamedTuple):
-    num_replicas: int
+    num_replicas: int = None
 
 class DecouplingMutuallyIndependentOptions(NamedTuple):
-    num_replicas: int
+    num_replicas: int = None
 
 class PartitioningDependenciesOptions(NamedTuple):
-    num_replicas: int
+    num_replicas: int = None
     num_partitions_per_replica: int = None
 
 class PartitioningCohashingOptions(NamedTuple):
-    num_replicas: int
+    num_replicas: int = None
     num_partitions_per_replica: int = None
 
 class PartitioningPartialOptions(NamedTuple):
-    num_replicas: int
+    num_replicas: int = None
     num_partitions_per_replica: int = None
 
 # Input/Output #################################################################
@@ -85,11 +85,11 @@ class Input(NamedTuple):
     monitored: bool
     prometheus_scrape_interval: datetime.timedelta
 
-    decoupling_monotonic_options: DecouplingMonotonicOptions = None
-    decoupling_mutually_independent_options: DecouplingMutuallyIndependentOptions = None
-    partitioning_cohashing_options: PartitioningCohashingOptions = None
-    partitioning_dependencies_options: PartitioningDependenciesOptions = None
-    partitioning_partial_options: PartitioningPartialOptions = None
+    decoupling_monotonic_options: DecouplingMonotonicOptions = DecouplingMonotonicOptions()
+    decoupling_mutually_independent_options: DecouplingMutuallyIndependentOptions = DecouplingMutuallyIndependentOptions()
+    partitioning_cohashing_options: PartitioningCohashingOptions = PartitioningCohashingOptions()
+    partitioning_dependencies_options: PartitioningDependenciesOptions = PartitioningDependenciesOptions()
+    partitioning_partial_options: PartitioningPartialOptions = PartitioningPartialOptions()
 
 
 Output = benchmark.RecorderOutput

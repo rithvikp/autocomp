@@ -44,7 +44,6 @@ def main(args) -> None:
                 timeout=datetime.timedelta(seconds=65),
                 warmup_duration=datetime.timedelta(seconds=25),
                 warmup_timeout=datetime.timedelta(seconds=30),
-                # duration=datetime.timedelta(seconds=10),
                 # timeout=datetime.timedelta(seconds=15),
                 # warmup_duration=datetime.timedelta(seconds=10),
                 # warmup_timeout=datetime.timedelta(seconds=15),
@@ -60,13 +59,13 @@ def main(args) -> None:
             inputs = []
 
             # Set these as necessary to run the correct set of microbenchmarks.
-            run_decoupling_functional = False
-            run_decoupling_monotonic = False
-            run_decoupling_mutually_independent = False
+            run_decoupling_functional = True
+            run_decoupling_monotonic = True
+            run_decoupling_mutually_independent = True
             run_decoupling_state_machine = False
             run_decoupling_general = False
-            run_partitioning_cohashing = False
-            run_partitioning_dependencies = False
+            run_partitioning_cohashing = True
+            run_partitioning_dependencies = True
             run_partitioning_partial = True
 
             clients = [
