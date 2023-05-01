@@ -23,7 +23,12 @@ fn deserialize_and_hash(
 ) -> (u32, i64, u32, Rc<Vec<u8>>, u32) {
     let mut hasher = DefaultHasher::new();
     v.hash(&mut hasher);
-    let hashed = hasher.finish();
+    let mut hashed = hasher.finish();
+    for _ in 0..100 {
+        let mut hasher = DefaultHasher::new();
+        hashed.hash(&mut hasher);
+        hashed = hasher.finish();
+    }
     (client, id, ballot, v, hashed as u32)
 }
 

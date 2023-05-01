@@ -39,12 +39,12 @@ pub async fn run(cfg: ReplicaArgs, mut ports: HashMap<String, ServerOrBound>) {
         r#"
         .input myID `repeat_iter(my_id.clone()) -> map(|p| (p,))`
         .input collector `repeat_iter(peers.clone()) -> map(|p| (p,))`
-        .async voteToReplica `null::<(u32,i64,Rc<Vec<u8>>,)>()` `source_stream(to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,i64,Rc<Vec<u8>>,)>(x.unwrap().1).unwrap())`
-        .async voteFromReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(v))) -> dest_sink(from_replica_sink)` `null::<(u32,u32,i64,Rc<Vec<u8>>,)>()`
+        .async voteToReplica `null::<(u32,u32,i64,Rc<Vec<u8>>,)>()` `source_stream(to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,i64,u32,Rc<Vec<u8>>,)>(x.unwrap().1).unwrap())`
+        .async voteFromReplica `map(|(node_id, v)| (node_id, serialize_to_bytes(v))) -> dest_sink(from_replica_sink)` `null::<(u32,u32,i64,u32,Rc<Vec<u8>>,)>()`
                     
         .persist storage
-        storage(v) :- voteToReplica(client, id, v) 
-        voteFromReplica@addr(i, client, id, v) :~ voteToReplica(client, id, v), collector(addr), myID(i)
+        storage(v) :- voteToReplica(client, id, b, v) 
+        voteFromReplica@addr(i, client, id, b, v) :~ voteToReplica(client, id, b, v), collector(addr), myID(i)
         "#
     );
 

@@ -33,6 +33,7 @@ class MicrobenchmarkType(enum.Enum):
     DECOUPLING_MUTUALLY_INDEPENDENT = enum.auto()
     DECOUPLING_STATE_MACHINE = enum.auto()
     DECOUPLING_GENERAL = enum.auto()
+    PARTITIONING_COHASHING = enum.auto()
     PARTITIONING_DEPENDENCIES = enum.auto()
     PARTITIONING_PARTIAL = enum.auto()
 
@@ -41,6 +42,7 @@ class MicrobenchmarkType(enum.Enum):
     AUTO_DECOUPLING_MUTUALLY_INDEPENDENT = enum.auto()
     AUTO_DECOUPLING_STATE_MACHINE = enum.auto()
     AUTO_DECOUPLING_GENERAL = enum.auto()
+    AUTO_PARTITIONING_COHASHING = enum.auto()
     AUTO_PARTITIONING_DEPENDENCIES = enum.auto()
     AUTO_PARTITIONING_PARTIAL = enum.auto()
 
@@ -53,6 +55,11 @@ class DecouplingMutuallyIndependentOptions(NamedTuple):
 
 class PartitioningDependenciesOptions(NamedTuple):
     num_replicas: int
+    num_partitions_per_replica: int = None
+
+class PartitioningCohashingOptions(NamedTuple):
+    num_replicas: int
+    num_partitions_per_replica: int = None
 
 class PartitioningPartialOptions(NamedTuple):
     num_replicas: int
@@ -79,6 +86,7 @@ class Input(NamedTuple):
 
     decoupling_monotonic_options: DecouplingMonotonicOptions = None
     decoupling_mutually_independent_options: DecouplingMutuallyIndependentOptions = None
+    partitioning_cohashing_options: PartitioningCohashingOptions = None
     partitioning_dependencies_options: PartitioningDependenciesOptions = None
     partitioning_partial_options: PartitioningPartialOptions = None
 
@@ -267,6 +275,41 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         }
         
         return endpoints, receive_endpoints, prom_endpoints, leader_proc, []
+
+    def _partitioning_cohashing(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: AutoMicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+        leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
+            '--service',
+            'leader',
+            '--prometheus-host',
+            net.prom_placement().leader.host.ip(),
+            f'--prometheus-port={str(net.prom_placement().leader.port)}',
+        ],
+        example="decoupling_mutually_independent")
+
+        replica_procs: List[proc.Proc] = []
+        for i in range(inp.partitioning_cohashing_options.num_replicas):
+            replica_procs.append(self.provisioner.popen_hydroflow(bench, f'replicas_{i}', 1,[
+                '--service',
+                'replica',
+                '--index',
+                str(i),
+            ],
+            example="decoupling_mutually_independent"))
+        
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {
+            "clients": ["leaders"],
+            "leaders": ["clients", "replicas"],
+            "replicas": ["leaders"],
+        }, {"clients": inp.num_client_procs})
+
+        prom_endpoints = {
+            'automicrobenchmarks_leader': [
+                f'{net.prom_placement().leader.host.ip()}:' +
+                f'{net.prom_placement().leader.port}'
+            ],
+        }
+        
+        return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs
 
     def _partitioning_dependencies(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: AutoMicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
         leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
@@ -457,6 +500,121 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         
         return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs + [collector_proc]
 
+    def _auto_decoupling_state_machine(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: AutoMicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+        leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
+            '--service',
+            'leader',
+            '--prometheus-host',
+            net.prom_placement().leader.host.ip(),
+            f'--prometheus-port={str(net.prom_placement().leader.port)}',
+        ],
+        example="auto_decoupling_state_machine")
+
+        responder_proc = self.provisioner.popen_hydroflow(bench, f'responders', 1,[
+            '--service',
+            'responder',
+        ],
+        example="auto_decoupling_state_machine")
+    
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {
+            "clients": ["leaders"],
+            "leaders": ["responders"],
+            "responders": ["clients"],
+        }, {"clients": inp.num_client_procs})
+
+        prom_endpoints = {
+            'automicrobenchmarks_leader': [
+                f'{net.prom_placement().leader.host.ip()}:' +
+                f'{net.prom_placement().leader.port}'
+            ],
+        }
+        
+        return endpoints, receive_endpoints, prom_endpoints, leader_proc, [responder_proc]
+
+    def _auto_partitioning_cohashing(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: AutoMicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+        assert inp.partitioning_cohashing_options.num_partitions_per_replica is not None
+
+        leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
+            '--service',
+            'leader',
+            '--leader.num-replica-partitions',
+            str(inp.partitioning_cohashing_options.num_partitions_per_replica),
+            '--leader.num-replicas',
+            str(inp.partitioning_cohashing_options.num_replicas),
+            '--prometheus-host',
+            net.prom_placement().leader.host.ip(),
+            f'--prometheus-port={str(net.prom_placement().leader.port)}',
+
+        ],
+        example="auto_partitioning_cohashing")
+
+        replica_procs: List[proc.Proc] = []
+        for i in range(inp.partitioning_cohashing_options.num_replicas * inp.partitioning_cohashing_options.num_partitions_per_replica):
+            replica_procs.append(self.provisioner.popen_hydroflow(bench, f'replicas_{i}', 1,[
+                '--service',
+                'replica',
+                '--index',
+                str(i),
+            ],
+            example="auto_partitioning_cohashing"))
+        
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {
+            "clients": ["leaders"],
+            "leaders": ["clients", "replicas"],
+            "replicas": ["leaders"],
+        }, {"clients": inp.num_client_procs})
+
+        prom_endpoints = {
+            'automicrobenchmarks_leader': [
+                f'{net.prom_placement().leader.host.ip()}:' +
+                f'{net.prom_placement().leader.port}'
+            ],
+        }
+        
+        return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs
+
+    def _auto_partitioning_dependencies(self, bench: benchmark.BenchmarkDirectory, args: Dict[Any, Any], inp: Input, net: AutoMicrobenchmarksNet) -> Tuple[Dict[str, provision.EndpointProvider], List[List[host.Endpoint]], Dict[str, List[str]], proc.Proc, List[proc.Proc]]:
+        assert inp.partitioning_dependencies_options.num_partitions_per_replica is not None
+
+        leader_proc = self.provisioner.popen_hydroflow(bench, 'leaders', 1, [
+            '--service',
+            'leader',
+            '--leader.num-replica-partitions',
+            str(inp.partitioning_dependencies_options.num_partitions_per_replica),
+            '--leader.num-replicas',
+            str(inp.partitioning_dependencies_options.num_replicas),
+            '--prometheus-host',
+            net.prom_placement().leader.host.ip(),
+            f'--prometheus-port={str(net.prom_placement().leader.port)}',
+
+        ],
+        example="auto_partitioning_dependencies")
+
+        replica_procs: List[proc.Proc] = []
+        for i in range(inp.partitioning_dependencies_options.num_replicas * inp.partitioning_dependencies_options.num_partitions_per_replica):
+            replica_procs.append(self.provisioner.popen_hydroflow(bench, f'replicas_{i}', 1,[
+                '--service',
+                'replica',
+                '--index',
+                str(i),
+            ],
+            example="auto_partitioning_dependencies"))
+        
+        endpoints, receive_endpoints = self.provisioner.rebuild(1, {
+            "clients": ["leaders"],
+            "leaders": ["clients", "replicas"],
+            "replicas": ["leaders"],
+        }, {"clients": inp.num_client_procs})
+
+        prom_endpoints = {
+            'automicrobenchmarks_leader': [
+                f'{net.prom_placement().leader.host.ip()}:' +
+                f'{net.prom_placement().leader.port}'
+            ],
+        }
+        
+        return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs
+
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any], inp: Input) -> Output:
         net = AutoMicrobenchmarksNet(inp, self.provisioner.hosts(1))
@@ -473,6 +631,8 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
             fn = self._decoupling_state_machine
         elif inp.microbenchmark_type == MicrobenchmarkType.DECOUPLING_GENERAL:
             fn = self._decoupling_general
+        elif inp.microbenchmark_type == MicrobenchmarkType.PARTITIONING_COHASHING:
+            fn = self._partitioning_cohashing
         elif inp.microbenchmark_type == MicrobenchmarkType.PARTITIONING_DEPENDENCIES:
             fn = self._partitioning_dependencies
         elif inp.microbenchmark_type == MicrobenchmarkType.PARTITIONING_PARTIAL:
@@ -487,6 +647,8 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
             fn = self._auto_decoupling_state_machine
         elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_DECOUPLING_GENERAL:
             fn = self._auto_decoupling_general
+        elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_PARTITIONING_COHASHING:
+            fn = self._auto_partitioning_cohashing
         elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_PARTITIONING_DEPENDENCIES:
             fn = self._auto_partitioning_dependencies
         elif inp.microbenchmark_type == MicrobenchmarkType.AUTO_PARTITIONING_PARTIAL:
