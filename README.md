@@ -49,7 +49,7 @@ To setup the bastion host and reproduce our experiments, perform the following c
    1. Add `conda activate autocomp` to bottom of `~/.bashrc`
 1. Increase `MaxSessions` and `MaxStartups` in `/etc/ssh/sshd_config` to `100` and `100:30:200`, respectively.
 1. Re-source `~/.profile` and `~/.bashrc`.
-1. Install the protobuf compiler and Rust.
+1. Install the protobuf compiler, Rust, and Prometheus.
 1. Clone this repo into the VM
 1. Compile the Scala code by running `./scripts/assembly_without_tests.sh`
 
@@ -59,4 +59,4 @@ You will also need a disk image (saved to your GCP account) that is configured w
 
 You will also need to clone the [Hydroflow](https://github.com/hydro-project/hydroflow) repository into the same parent directory as this repository. as well as load a wheel of Hydro CLI (accessible via GitHub Actions or by manually building it) into your Python environment.
 
-You are now ready to run benchmarks! Refer to `benchmarks/vldb24/README.md` for more information about our submission benchmarks.
+You are now ready to run benchmarks! Refer to [benchmarks/vldb24/README.md](benchmarks/vldb24/README.md) for more information about our submission benchmarks.
