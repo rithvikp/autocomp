@@ -11,20 +11,20 @@ For the benchmark scripts used in our VLDB '24 submission, as well as the techni
 Note that all the Dedalus protocols still use Scala clients.
 
 ### Voting
-For the Dedalus implementation, refer to [rust/examples/voting](rust/examples/voting). For the Dedalus implementation of AutoVoting, refer to [rust/examples/autovoting](rust/examples/autovoting).
-For the Scala implementation of voting, refer to [shared/src/main/scala/frankenpaxos/voting](shared/src/main/scala/frankenpaxos/voting).
+For the Dedalus implementation, refer to [`rust/examples/voting`](rust/examples/voting). For the Dedalus implementation of AutoVoting, refer to [`rust/examples/autovoting`](rust/examples/autovoting).
+For the Scala implementation of voting, refer to [`shared/src/main/scala/frankenpaxos/voting`](shared/src/main/scala/frankenpaxos/voting).
 
 ### 2PC
-For the Dedalus implementation, refer to [rust/examples/twopc](rust/examples/twopc). For the Dedalus implementation of Auto2PC, refer to [rust/examples/autotwopc](rust/examples/autotwopc).
-For the Scala implementation of 2PC, refer to [shared/src/main/scala/frankenpaxos/twopc](shared/src/main/scala/frankenpaxos/twopc).
+For the Dedalus implementation, refer to [`rust/examples/twopc`](rust/examples/twopc). For the Dedalus implementation of Auto2PC, refer to [`rust/examples/autotwopc`](rust/examples/autotwopc).
+For the Scala implementation of 2PC, refer to [`shared/src/main/scala/frankenpaxos/twopc`](shared/src/main/scala/frankenpaxos/twopc).
 
 ### Multipaxos
-For the Dedalus implementation of MultiPaxos, refer to [rust/examples/multipaxos](rust/examples/multipaxos). For the Dedalus implementation of AutoMultiPaxos, refer to [rust/examples/automultipaxos](rust/examples/automultipaxos). Finally, for the Dedalus implementation of [Compartmentalized MultiPaxos](https://mwhittaker.github.io/publications/compartmentalized_paxos.pdf), refer to [rust/examples/comppaxos](rust/examples/comppaxos).
+For the Dedalus implementation of MultiPaxos, refer to [`rust/examples/multipaxos`](rust/examples/multipaxos). For the Dedalus implementation of AutoMultiPaxos, refer to [`rust/examples/automultipaxos`](rust/examples/automultipaxos). Finally, for the Dedalus implementation of [Compartmentalized MultiPaxos](https://mwhittaker.github.io/publications/compartmentalized_paxos.pdf), refer to [`rust/examples/comppaxos`](rust/examples/comppaxos).
 
-For the Scala implementation of Multipaxos, refer to [shared/src/main/scala/frankenpaxos/multipaxos](shared/src/main/scala/frankenpaxos/multipaxos). Note that this implementation can run both regular MultiPaxos and Compartmentalized MultiPaxos.
+For the Scala implementation of Multipaxos, refer to [`shared/src/main/scala/frankenpaxos/multipaxos`](shared/src/main/scala/frankenpaxos/multipaxos). Note that this implementation can run both regular MultiPaxos and Compartmentalized MultiPaxos.
 
 ### Microbenchmarks
-The client for microbenchmarks are implemented in [shared/src/main/scala/frankenpaxos/automicrobenchmarks](shared/src/main/scala/frankenpaxos/automicrobenchmarks). The microbenchmark protocols are implemented in [rust/examples/](rust/examples/), with one directory for each microbenchmark and another for its optimized variant (ex. `decoupling_functional` and `auto_decoupling_functional`).
+The client for microbenchmarks are implemented in [`shared/src/main/scala/frankenpaxos/automicrobenchmarks`](shared/src/main/scala/frankenpaxos/automicrobenchmarks). The microbenchmark protocols are implemented in [`rust/examples/`](rust/examples/), with one directory for each microbenchmark and another for its optimized variant (ex. `decoupling_functional` and `auto_decoupling_functional`).
 
 
 ## Getting Started with Running Benchmarks
