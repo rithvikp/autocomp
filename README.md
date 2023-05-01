@@ -1,103 +1,38 @@
-# FrankenPaxos
+# Autocomp
 
-This directory contains Scala implementations of various state machine
-replication protocols including [Compartmentalized
-MultiPaxos](https://mwhittaker.github.io/publications/compartmentalized_paxos.pdf),
-[Matchmaker
-Paxos](https://mwhittaker.github.io/publications/matchmaker_paxos.pdf),
-[Bipartisan
-Paxos](https://mwhittaker.github.io/publications/compartmentalized_bipartisan_paxos.pdf),
-MultiPaxos, CASPaxos, CRAQ, EPaxos, Fast Paxos, and Mencius.
+This repository contains implementations of various state machine replication protocols in both Scala and Dedalus. It was initially forked from [frankenpaxos](https://github.com/mwhittaker/frankenpaxos) by Michael Whittaker.
 
-## Getting Started
+Core scala code is in the [`shared`](shared/) directory, core rust code is in the [`rust`](rust/) directory, JVM-specific code is in the
+[`jvm/`](jvm/) directory, and Javascript-specific code is in the [`js/`](js/) directory.
+
+For the benchmark scripts used in our VLDB '24 submission, please look at [`benchmarks/vldb24/README.md`](benchmarks/vldb24/README.md). To view the implementations of the protocols in this submission, refer to the next section.
+
+## Protocols
+Note that all the Dedalus protocols still use Scala clients.
+
+### Voting
+For the Scala implementation of voting, refer to [shared/src/main/scala/frankenpaxos/voting](shared/src/main/scala/frankenpaxos/voting).
+For the Dedalus implementation, refer to [rust/examples/voting](rust/examples/voting). For the Dedalus implementation of AutoVoting, refer to [rust/examples/autovoting](rust/examples/autovoting).
+
+### 2PC
+For the Scala implementation of 2PC, refer to [shared/src/main/scala/frankenpaxos/twopc](shared/src/main/scala/frankenpaxos/twopc). For the Dedalus implementation, refer to [rust/examples/twopc](rust/examples/twopc). For the Dedalus implementation of Auto2PC, refer to [rust/examples/autotwopc](rust/examples/autotwopc).
+
+### Multipaxos
+For the Scala implementation of Multipaxos, refer to [shared/src/main/scala/frankenpaxos/multipaxos](shared/src/main/scala/frankenpaxos/multipaxos). Note that this implementation can run both regular MultiPaxos and [Compartmentalized
+MultiPaxos](https://mwhittaker.github.io/publications/compartmentalized_paxos.pdf).
+
+For the Dedalus implementation of MultiPaxos, refer to [rust/examples/multipaxos](rust/examples/multipaxos). For the Dedalus implementation of AutoMultiPaxos, refer to [rust/examples/automultipaxos](rust/examples/automultipaxos). Finally, for the Dedalus implementation of Compartmentalized MultiPaxos, refer to [rust/examples/comppaxos](rust/examples/comppaxos).
+
+### Microbenchmarks
+The client for microbenchmarks are implemented in [shared/src/main/scala/frankenpaxos/automicrobenchmarks](shared/src/main/scala/frankenpaxos/automicrobenchmarks). The microbenchmark protocols are implemented in [rust/examples/](rust/examples/), with one directory for each microbenchmark and another for its optimized variant (ex. `decoupling_functional` and `auto_decoupling_functional`).
+
+
+## Getting Started with Scala Code
 Make sure you have Java, Scala, and sbt installed. We tested everything with
 Java version 1.8.0_131 and with sbt version 1.1.6 on Ubuntu 18.04. You can
-install these however you like (e.g., we use [this
+install these however you like (e.g., [this
 script](https://raw.githubusercontent.com/mwhittaker/vms/master/install_java8.sh)
 and [this
 script](https://raw.githubusercontent.com/mwhittaker/vms/master/install_scala.sh)).
 
-You can build and run all of frankenpaxos' code using `sbt`. All the code in
-this repository can be compiled to bytecode that you can run on the JVM and can
-also be compiled to Javascript that you can run in the browser. As a result,
-the project is split into two subprojects: `frankenpaxosJVM` for the code that
-compiles to bytecode and `frankenpaxosJS` for the code that compiles to
-Javascript. `frankenpaxos` is a parent project of the two.
-
-```bash
-$ sbt
-sbt:frankenpaxos> frankenpaxosJVM/compile  # Build the JVM code.
-sbt:frankenpaxos> frankenpaxosJS/compile   # Build the Javascript code.
-sbt:frankenpaxos> frankenpaxos/compile     # Build all the code.
-sbt:frankenpaxos> frankenpaxosJVM/test     # Run the tests.
-sbt:frankenpaxos> frankenpaxosJS/fastOptJS # Compile to Javascript.
-sbt:frankenpaxos> frankenpaxosJVM/assembly # Assemble a JAR.
-
-$ # Run the JAR. Replace <main> with one of the executable classes. You can use
-$ # tab completion to see the full list of possibilities.
-$ java -cp jvm/target/scala-2.12/frankenpaxos-assembly-0.1.0-SNAPSHOT.jar <main>
-$
-$ # For example, we can run the echo server.
-$ java -cp jvm/target/scala-2.12/frankenpaxos-assembly-0.1.0-SNAPSHOT.jar \
->     frankenpaxos.echo.ServerMain --help
-```
-
-Core code is in the [`shared`](shared/) directory, JVM-specific code is in the
-[`jvm/`](jvm/) directory, and Javascript-specific code is in the [`js/`](js/)
-directory.
-
-## Running Benchmarks
-See the `benchmarks/` directory for information on running benchmarks.
-
-## Running in the Browser
-The code in this repository is compiled to Javascript using Scala.js. With a
-bit of HTML and Javascript, we can visualize the execution of a distributed
-system in the browser. For example, visit
-https://mwhittaker.github.io/frankenpaxos/js/src/main/js/echo/echo.html for a
-visualization of a simple echo protocol.
-
-To run the visualization locally, run `sbt frankenpaxosJS/fastOptJs` and then
-run an HTTP server on port 8000 in the root `frankenpaxos` directory (e.g., by
-running `python -m http.server 8000`). Open
-`http://localhost:8000/js/src/main/js/echo/echo.html`.  The source code for
-this example can be found in the following files:
-
-- [`Echo.proto`](shared/src/main/scala/frankenpaxos/echo/Echo.proto)
-- [`Server.scala`](shared/src/main/scala/frankenpaxos/echo/Server.scala)
-- [`Client.scala`](shared/src/main/scala/frankenpaxos/echo/Client.scala)
-- [`Echo.scala`](js/src/main/scala/frankenpaxos/echo/Echo.scala)
-- [`echo.html`](js/src/main/js/echo/echo.html)
-- [`echo.js`](js/src/main/js/echo/echo.js)
-
-## Using Eclim
-[Eclim](http://eclim.org/eclimd.html) is a vim plugin that lets you use all the
-features and functionality of Eclipse from within vim. To use eclim with this
-project, first install eclim and all necessary dependencies. Then, do the
-following:
-
-1. Run `eclipse` from within `sbt`. This will create a `.project` file and a
-   `.classpath` file in the `jvm/` directory.
-2. Copy `jvm/.project` and `jvm/.classpath` into the root directory.
-3. Remove the `linkedResources` section in `.project`. It is not needed.
-4. Remove the `kind="src"` class path entries from the top of `.classpath`.
-   Replace them with the following:
-
-   ```
-   <classpathentry kind="src" path="shared/src/main/scala"/>
-   <classpathentry kind="src" path="shared/src/test/scala"/>
-   <classpathentry kind="src" path="js/src/main/scala"/>
-   <classpathentry kind="src" path="jvm/src/main/scala"/>
-   <classpathentry kind="src" path="jvm/target/scala-2.12/src_managed/main"/>
-   ```
-5. Open up vim and run `:ProjectCreate . -n scala` or `:ProjectRefresh` if the
-   project already exists.
-
-## Updating Github Pages
-```bash
-git checkout master
-git branch -f gh-pages master
-git checkout gh-pages
-git add -f js/target/scala-2.12/frankenpaxos-fastopt.js*
-git commit
-git push -f origin gh-pages
-```
+You can build and run all of the Scala code using `sbt`.
