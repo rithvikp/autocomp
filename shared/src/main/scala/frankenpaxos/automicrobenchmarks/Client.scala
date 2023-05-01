@@ -80,7 +80,10 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
             promise.success(())
             promises -= reply.id
           case None =>
-            logger.fatal(s"Received reply for unpending request ${reply.id}.")
+            logger.info(
+              s"Received reply for unpending request ${reply.id}. Here are the pending ids: ${promises
+                .map(_._1)}."
+            )
         }
 
       case ClientInbound.Request.ClientNotification(notif) => {}

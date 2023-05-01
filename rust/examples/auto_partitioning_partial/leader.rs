@@ -26,7 +26,7 @@ pub struct LeaderArgs {
 fn decrypt_and_deserialize(msg: BytesMut) -> (i64, u32, Rc<Vec<u8>>) {
     let s =
         automicrobenchmarks_proto::ServerInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
-    println!("leader received {} {}", s.id, s.ballot);
+    // println!("leader received {} {}", s.id, s.ballot);
     return (s.id, s.ballot, Rc::new(s.payload));
 }
 

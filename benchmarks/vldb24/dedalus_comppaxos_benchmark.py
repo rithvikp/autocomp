@@ -16,8 +16,8 @@ def main(args) -> None:
                     'leaders': 2,
                     'replicas': 4,
                     'clients': 7,
-                    'acceptors': 2*2,
-                    'proxy_leaders': 10,
+                    'acceptors': 3,
+                    'proxy_leaders': 'leaders',
                 },
             }
 
@@ -105,7 +105,7 @@ def main(args) -> None:
                         flush_reads_every_n = 1,
                     ),
                     client_log_level = args.log_level,
-                    flexible = True,
+                    flexible = False,
                 )
                 
                 for value_size in [16]

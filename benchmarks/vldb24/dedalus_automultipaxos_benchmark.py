@@ -14,11 +14,11 @@ def main(args) -> None:
                 # Max across any benchmark
                 '1': {
                     'leaders': 2,
-                    'replicas': 3,
-                    'clients': 10,
+                    'replicas': 4,
+                    'clients': 4,
                     'acceptors': 3*5,
                     # Num coordinators = num logical acceptors
-                    'coordinators': 5,
+                    'coordinators': 3,
                     'p2a_proxy_leaders': 2*5,
                     'p2b_proxy_leaders': 2*5,
                 },
@@ -136,7 +136,7 @@ def main(args) -> None:
                 for value_size in [16]
                 for num_acceptors_per_partition in [3]
                 for num_acceptor_partitions in [5]
-                for num_replicas in [3]
+                for num_replicas in [4]
                 for num_p2a_proxy_leaders_per_leader in [5]
                 for num_p2b_proxy_leaders_per_leader in [5]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
@@ -146,12 +146,12 @@ def main(args) -> None:
                     (2, 100, 10),
                     (3, 100, 10),
                     (4, 100, 10),
-                    (5, 100, 10),
-                    (6, 100, 10),
-                    (7, 100, 10),
-                    (8, 100, 10),
-                    (9, 100, 10),
-                    (10, 100, 10),
+                    # (5, 100, 10),
+                    # (6, 100, 10),
+                    # (7, 100, 10),
+                    # (8, 100, 10),
+                    # (9, 100, 10),
+                    # (10, 100, 10),
                 ]
             ] * 3
 

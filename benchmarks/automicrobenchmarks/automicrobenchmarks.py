@@ -635,6 +635,7 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
         replica_procs: List[proc.Proc] = []
         for i in range(inp.partitioning_partial_options.num_replicas * inp.partitioning_partial_options.num_partitions_per_replica):
             partition_index = i % inp.partitioning_partial_options.num_partitions_per_replica
+            coordinator_index = i // inp.partitioning_partial_options.num_partitions_per_replica
             replica_procs.append(self.provisioner.popen_hydroflow(bench, f'replicas_{i}', 1, [
                 '--service',
                 'replica',
@@ -642,14 +643,22 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
                 str(i),
                 '--replica.partition-index',
                 str(partition_index),
+                '--replica.coordinator-index',
+                str(coordinator_index),
             ],
             example="auto_partitioning_partial"))
 
-        coordinator_proc = self.provisioner.popen_hydroflow(bench, 'coordinators', 1, [
-            '--service',
-            'coordinator',
-        ],
-        example="auto_partitioning_partial")
+        coordinator_procs: List[proc.Proc] = []
+        for i in range(inp.partitioning_partial_options.num_replicas):
+            coordinator_procs.append(self.provisioner.popen_hydroflow(bench, f'coordinators_{i}', 1, [
+                '--service',
+                'coordinator',
+                '--coordinator.index',
+                str(i),
+                '--coordinator.num-replica-partitions',
+                str(inp.partitioning_partial_options.num_partitions_per_replica),
+            ],
+            example="auto_partitioning_partial"))
         
         endpoints, receive_endpoints = self.provisioner.rebuild(1, {
             "clients": ["leaders"],
@@ -665,7 +674,7 @@ class AutoMicrobenchmarksSuite(benchmark.Suite[Input, Output]):
             ],
         }
         
-        return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs + [coordinator_proc]
+        return endpoints, receive_endpoints, prom_endpoints, leader_proc, replica_procs + coordinator_procs
 
 
     def run_benchmark(self, bench: benchmark.BenchmarkDirectory,

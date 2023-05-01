@@ -9,9 +9,15 @@ use hydroflow_datalog::datalog;
 use std::collections::HashMap;
 
 #[derive(clap::Args, Debug)]
-pub struct CoordinatorArgs {}
+pub struct CoordinatorArgs {
+    #[clap(long = "coordinator.index")]
+    coordinator_index: Option<u32>,
 
-pub async fn run(_cfg: CoordinatorArgs, mut ports: HashMap<String, ServerOrBound>) {
+    #[clap(long = "coordinator.num-replica-partitions")]
+    coordinator_num_replica_partitions: Option<u32>,
+}
+
+pub async fn run(cfg: CoordinatorArgs, mut ports: HashMap<String, ServerOrBound>) {
     let from_coordinator = ports
         .remove("send_to$replicas$0")
         .unwrap()
@@ -25,9 +31,17 @@ pub async fn run(_cfg: CoordinatorArgs, mut ports: HashMap<String, ServerOrBound
         .await
         .into_source();
 
-    let partitions = from_coordinator.keys.clone();
-    let num_partitions = partitions.len();
+    let mut replicas = from_coordinator.keys.clone();
+    replicas.sort();
     let from_coordinator_sink = from_coordinator.into_sink();
+
+    let my_id = cfg.coordinator_index.unwrap();
+    let num_partitions = cfg.coordinator_num_replica_partitions.unwrap();
+
+    let start_index = usize::try_from(my_id * num_partitions).unwrap();
+    let end_index = usize::try_from((my_id + 1) * num_partitions).unwrap();
+    let partitions_slice = &replicas[start_index..end_index];
+    let partitions = partitions_slice.to_vec();
 
     let df = datalog!(
         r#"

@@ -14,12 +14,24 @@ import re
 
 markers = ["o", "^", "s", "D", "p", "P", "X", "d"]
 
+def get_color(label: str) -> str:
+    if label == "BasePaxos":
+        return "#146C94"
+    elif label == "ScalablePaxos":
+        return "#19A7CE"
+    elif label == "CBasePaxos":
+        return "#8B1874"
+    elif label == "CScalablePaxos":
+        return "#B71375"
+    else:
+        return "#F7D060"
+
 def plot_lt(df: pd.DataFrame, ax: plt.Axes, marker: str, label: str) -> None:
     grouped = df.groupby('num_clients')
     throughput = grouped['throughput'].agg(np.mean).sort_index() / 1000
     throughput_std = grouped['throughput'].agg(np.std).sort_index() / 1000
     latency = grouped['latency'].agg(np.mean).sort_index()
-    line = ax.plot(throughput, latency, marker, label=label, linewidth=2)[0]
+    line = ax.plot(throughput, latency, marker, color=get_color(label), label=label, linewidth=2)[0]
     ax.fill_betweenx(latency,
                      throughput - throughput_std,
                      throughput + throughput_std,
@@ -33,7 +45,7 @@ def main(args) -> None:
     if len(args.results) > len(markers):
         raise Exception('List more matplotlib markers to match the number of results')
     
-    fig, ax = plt.subplots(1, 1, figsize=(8, 3))
+    fig, ax = plt.subplots(1, 1, figsize=(8, 4))
     
     for i, (result, title) in enumerate(zip(args.results, args.titles)):
         dfs = pd.read_csv(result)
@@ -49,7 +61,7 @@ def main(args) -> None:
     ax.set_title('')
     ax.set_xlabel('Throughput (thousands of commands per second)')
     ax.set_ylabel('Median latency (ms)')
-    ax.legend(loc='upper right', ncol=2)
+    ax.legend(loc='upper right', ncol=1)
     ax.grid()
     fig.savefig(args.output, bbox_inches='tight')
     print(f'Wrote plot to {args.output}.')

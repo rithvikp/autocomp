@@ -1,5 +1,5 @@
 #!/bin/bash
-python plot.py --results voting_lt/3base.csv voting_lt/3scale1.csv voting_lt/3scale3.csv voting_lt/3scale5.csv --titles "Base" "1 partition" "3 partitions" "5 partitions" --output eval-voting-lt.pdf
+# python plot.py --results voting_lt/3base.csv voting_lt/3scale1.csv voting_lt/3scale3.csv voting_lt/3scale5.csv --titles "Base" "1 partition" "3 partitions" "5 partitions" --output eval-voting-lt.pdf
 # python plot.py --results twopc_lt/fixed_base.csv twopc_lt/fixed_auto1.csv twopc_lt/fixed_auto3.csv twopc_lt/fixed_auto5.csv --titles "Base" "1 partition" "3 partitions" "5 partitions" --output eval-2pc-lt.pdf
-# python plot.py --results multipaxos_lt/base.csv multipaxos_lt/scale1.csv multipaxos_lt/scale3.csv multipaxos_lt/scale5.csv --titles "Base" "1 partition" "3 partitions" "5 partitions" --output eval-paxos-lt.pdf
-# python plot_michael_comp.py --results multipaxos_lt/base.csv multipaxos_lt/scale3.csv multipaxos_lt/base_michael.csv multipaxos_lt/scale_michael.csv --titles "BasePaxos" "ScalablePaxos" "BaseCompPaxos" "CompPaxos" --output eval-michael-comp.pdf
+# python plot.py --results multipaxos_lt/base.csv multipaxos_lt/4rep_scale1.csv multipaxos_lt/4rep_scale3.csv multipaxos_lt/scale5.csv --titles "Base" "1 partition" "3 partitions" "5 partitions" --output eval-paxos-lt.pdf
+python plot_michael_comp.py --results multipaxos_lt/base.csv multipaxos_lt/11nodes.csv multipaxos_lt/base_michael.csv multipaxos_lt/scale_michael.csv multipaxos_lt/dedalus_comp.csv  --titles "BasePaxos" "ScalablePaxos" "CBasePaxos" "CScalablePaxos" "DedalusCScalablePaxos" --output eval-michael-comp.pdf

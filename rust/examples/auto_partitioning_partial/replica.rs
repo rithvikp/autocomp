@@ -17,13 +17,15 @@ pub struct ReplicaArgs {
 
     #[clap(long = "replica.partition-index")]
     replica_partition_index: Option<u32>,
+
+    #[clap(long = "replica.coordinator-index")]
+    replica_coordinator_index: Option<u32>,
 }
 
 fn serialize(
     (node_id, client, id, ballot, v): (u32, u32, i64, u32, Rc<Vec<u8>>),
     cipher: &Aes128Gcm,
 ) -> (u32, u32, i64, u32, Rc<Vec<u8>>) {
-    println!("serialize {} {}", id, ballot);
     let iv = Nonce::from_slice(b"unique nonce");
     let mut encrypted_payload = v.as_ref().clone();
     for _ in 0..100 {
@@ -66,14 +68,14 @@ pub async fn run(cfg: ReplicaArgs, mut ports: HashMap<String, ServerOrBound>) {
         .await
         .into_source();
 
-    let to_coordinator = ports
+    let to_coordinator_sink = ports
         .remove("send_to$coordinators$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
-        .await;
-    let coordinator = to_coordinator.keys.clone();
-    let to_coordinator_sink = to_coordinator.into_sink();
+        .await
+        .into_sink();
 
+    let coordinator = cfg.replica_coordinator_index.unwrap();
     let my_id: Vec<u32> = vec![cfg.index.unwrap()];
     let partition_id = cfg.replica_partition_index.unwrap();
 
@@ -82,7 +84,7 @@ pub async fn run(cfg: ReplicaArgs, mut ports: HashMap<String, ServerOrBound>) {
         .input myID `repeat_iter(my_id.clone()) -> map(|p| (p,))`
         .input partitionID `repeat_iter([(partition_id,),])` # ID scheme: Assuming n partitions. Acceptor i has partitions from i*n to (i+1)*n-1.
         .input leader `repeat_iter(peers.clone()) -> map(|p| (p,))`
-        .input coordinator `repeat_iter(coordinator.clone()) -> map(|p| (p,))`
+        .input coordinator `repeat_iter([(coordinator,),])`
         .input startBallot `repeat_iter([(0 as u32,),])`
         
         .async ballotToReplicaU `null::<(u32,)>()` `source_stream(ballot_to_replica_source) -> map(|x| deserialize_from_bytes::<(u32,)>(x.unwrap().1).unwrap())`

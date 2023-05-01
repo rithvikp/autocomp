@@ -29,25 +29,25 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'clients': 10,
-                    'replicas': 9,
+                    'clients': 7,
+                    'replicas': 6,
                     'responders': 1,
                     'collectors': 1,
-                    'coordinators': 1,
+                    'coordinators': 3,
                 },
             }
 
         def inputs(self) -> Collection[Input]:
             system_inputs = dict(
                 jvm_heap_size='8g',
-                # duration=datetime.timedelta(seconds=60),
-                # timeout=datetime.timedelta(seconds=65),
-                # warmup_duration=datetime.timedelta(seconds=25),
-                # warmup_timeout=datetime.timedelta(seconds=30),
-                duration=datetime.timedelta(seconds=10),
-                timeout=datetime.timedelta(seconds=15),
-                warmup_duration=datetime.timedelta(seconds=10),
-                warmup_timeout=datetime.timedelta(seconds=15),
+                duration=datetime.timedelta(seconds=60),
+                timeout=datetime.timedelta(seconds=65),
+                warmup_duration=datetime.timedelta(seconds=25),
+                warmup_timeout=datetime.timedelta(seconds=30),
+                # duration=datetime.timedelta(seconds=10),
+                # timeout=datetime.timedelta(seconds=15),
+                # warmup_duration=datetime.timedelta(seconds=10),
+                # warmup_timeout=datetime.timedelta(seconds=15),
                 warmup_sleep=datetime.timedelta(seconds=5),
                 # Need a large lag in order for Prometheus to initialize correctly
                 client_lag=datetime.timedelta(seconds=10),
@@ -103,6 +103,8 @@ def main(args) -> None:
                         (1, 1),
                         # (2, 2),
                         (3, 2), # THIS ONE
+                        (3, 2), # THIS ONE
+                        (3, 2), # THIS ONE
                         # (4, 2),
                     ]
                 ])
@@ -117,6 +119,8 @@ def main(args) -> None:
                         (1, 1),
                         # (5, 2),
                         # (6, 2),
+                        (7, 2), # THIS ONE
+                        (7, 2), # THIS ONE
                         (7, 2), # THIS ONE
                         # (8, 2),
                     ]
@@ -137,6 +141,8 @@ def main(args) -> None:
                         (1, 1),
                         # (2, 2),
                         (3, 2), # THIS ONE
+                        (3, 2), # THIS ONE
+                        (3, 2), # THIS ONE
                         # (4, 2),
                     ]
                 ])
@@ -154,21 +160,13 @@ def main(args) -> None:
                         (1, 1),
                         # (6, 2),
                         (7, 2), # THIS ONE
+                        (7, 2), # THIS ONE
+                        (7, 2), # THIS ONE
                         # (8, 2),
                     ]
                 ])
 
             if run_decoupling_mutually_independent:
-                # Regular:  (1, 3)
-                # Auto: (3, 3)
-                clients_special = [
-                    (1, 1),
-                    (1, 3),
-                    (2, 3),
-                    (3, 3),
-                    (4, 3),
-                    # (5, 3),
-                ]
                 inputs.extend([
                     Input(
                         microbenchmark_type = MicrobenchmarkType.DECOUPLING_MUTUALLY_INDEPENDENT,
@@ -179,7 +177,15 @@ def main(args) -> None:
                         ),
                         **system_inputs,
                     )
-                    for (num_client_procs, num_clients_per_proc) in clients_special
+                    for (num_client_procs, num_clients_per_proc) in [
+                        (1, 1),
+                        # (2, 2),
+                        (3, 2), # THIS ONE
+                        (3, 2), # THIS ONE
+                        (3, 2), # THIS ONE
+                        # (4, 2),
+                    ]
+
                 ])
                 inputs.extend([
                     Input(
@@ -191,7 +197,14 @@ def main(args) -> None:
                         ),
                         **system_inputs,
                     )
-                    for (num_client_procs, num_clients_per_proc) in clients_special
+                    for (num_client_procs, num_clients_per_proc) in [
+                        (1, 1),
+                        (6, 2), # THIS ONE
+                        (6, 2), # THIS ONE
+                        (6, 2), # THIS ONE
+                        # (7, 2),
+                        # (8, 2),
+                    ]
                 ])
 
             if run_decoupling_state_machine:
@@ -240,6 +253,8 @@ def main(args) -> None:
                         (1, 1),
                         # (2, 2),
                         (2, 3), # THIS ONE
+                        (2, 3), # THIS ONE
+                        (2, 3), # THIS ONE
                         # (3, 3),
                     ]
                 ])
@@ -250,31 +265,20 @@ def main(args) -> None:
                         num_clients_per_proc=num_clients_per_proc,
                         partitioning_cohashing_options=PartitioningCohashingOptions(
                             num_replicas=3,
-                            num_partitions_per_replica=3,
+                            num_partitions_per_replica=2,
                         ),
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
                         (1, 1),
-                        # (4, 2),
-                        # (5, 2),
-                        # (6, 2),
-                        (7, 3),
-                        (8, 3),
-                        (9, 3),
-                        (10, 3),
+                        (4, 3), # THIS ONE,
+                        (4, 3), # THIS ONE,
+                        (4, 3), # THIS ONE,
+                        # (6, 3),
                     ]
                 ])
 
             if run_partitioning_dependencies:
-                clients_special = [
-                    (1, 1),
-                    (1, 3),
-                    (2, 3),
-                    (3, 3),
-                    (4, 3),
-                    # (5, 3),
-                ]
                 inputs.extend([
                     Input(
                         microbenchmark_type = MicrobenchmarkType.PARTITIONING_DEPENDENCIES,
@@ -285,7 +289,14 @@ def main(args) -> None:
                         ),
                         **system_inputs,
                     )
-                    for (num_client_procs, num_clients_per_proc) in clients_special
+                    for (num_client_procs, num_clients_per_proc) in [
+                        (1, 1),
+                        # (1, 3),
+                        (2, 3), # THIS ONE
+                        (2, 3), # THIS ONE
+                        (2, 3), # THIS ONE
+                        # (3, 3),
+                    ]
                 ])
                 inputs.extend([
                     Input(
@@ -294,34 +305,41 @@ def main(args) -> None:
                         num_clients_per_proc=num_clients_per_proc,
                         partitioning_dependencies_options=PartitioningDependenciesOptions(
                             num_replicas=3,
-                            num_partitions_per_replica=3,
+                            num_partitions_per_replica=2,
                         ),
                         **system_inputs,
                     )
-                    for (num_client_procs, num_clients_per_proc) in clients_special
+                    for (num_client_procs, num_clients_per_proc) in [
+                        (1, 1),
+                        # (3, 3),
+                        (4, 3), # THIS ONE
+                        (4, 3), # THIS ONE
+                        (4, 3), # THIS ONE
+                        # (5, 3),
+                        # (6, 3),
+                    ]
                 ])
 
             if run_partitioning_partial:
-                clients_special = [
-                    # (1, 1),
-                    (1, 3),
-                    # (2, 3),
-                    # (3, 3),
-                    # (4, 3),
-                    # (5, 3),
-                ]
-                # inputs.extend([
-                #     Input(
-                #         microbenchmark_type = MicrobenchmarkType.PARTITIONING_PARTIAL,
-                #         num_client_procs = num_client_procs,
-                #         num_clients_per_proc=num_clients_per_proc,
-                #         partitioning_partial_options=PartitioningPartialOptions(
-                #             num_replicas=3,
-                #         ),
-                #         **system_inputs,
-                #     )
-                #     for (num_client_procs, num_clients_per_proc) in clients_special
-                # ])
+                inputs.extend([
+                    Input(
+                        microbenchmark_type = MicrobenchmarkType.PARTITIONING_PARTIAL,
+                        num_client_procs = num_client_procs,
+                        num_clients_per_proc=num_clients_per_proc,
+                        partitioning_partial_options=PartitioningPartialOptions(
+                            num_replicas=3,
+                        ),
+                        **system_inputs,
+                    )
+                    for (num_client_procs, num_clients_per_proc) in [
+                        (1, 1),
+                        # (1, 3),
+                        (2, 3), # THIS ONE
+                        (2, 3), # THIS ONE
+                        (2, 3), # THIS ONE
+                        # (3, 3),
+                    ]
+                ])
                 inputs.extend([
                     Input(
                         microbenchmark_type = MicrobenchmarkType.AUTO_PARTITIONING_PARTIAL,
@@ -329,11 +347,18 @@ def main(args) -> None:
                         num_clients_per_proc=num_clients_per_proc,
                         partitioning_partial_options=PartitioningPartialOptions(
                             num_replicas=3,
-                            num_partitions_per_replica=3,
+                            num_partitions_per_replica=2,
                         ),
                         **system_inputs,
                     )
-                    for (num_client_procs, num_clients_per_proc) in clients_special
+                    for (num_client_procs, num_clients_per_proc) in [
+                        (1, 1),
+                        # (3, 3),
+                        (4, 3), # THIS ONE
+                        (4, 3), # THIS ONE
+                        (4, 3), # THIS ONE
+                        # (5, 3),
+                    ]
                 ])
 
             return inputs #*3
