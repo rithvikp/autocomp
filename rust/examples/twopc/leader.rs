@@ -79,6 +79,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
     let peers = vote_to_participant_port.keys.clone();
     let num_replicas = peers.len();
+    let peers_formatted = format!("{:?}", peers);
     // println!("peers: {:?}", peers);
     let vote_to_participant_sink = vote_to_participant_port.into_sink();
 
@@ -138,7 +139,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 .async commitToParticipant `map(|(node_id, v):(u32,(u32,i64,Rc<Vec<u8>>))| (node_id, serialize_to_bytes(v))) -> dest_sink(commit_to_participant_sink)` `null::<(u32,i64,Rc<Vec<u8>>,)>()`
 .async ackFromParticipant `null::<(u32,i64,Rc<Vec<u8>>,u32,)>()` `source_stream(ack_from_participant_source) -> map(|v| deserialize_from_bytes::<(u32,i64,Rc<Vec<u8>>,u32,)>(v.unwrap().1).unwrap())`
 
-.output logCommit `map(|(client, id, p):(u32,i64,Rc<Vec<u8>>)| format!("client {:?}, id: {:?}, p: {:?}", client, id, p)) -> dest_sink(file_sink)`
+.output logCommit `map(|(client, id, p):(u32,i64,Rc<Vec<u8>>)| format!("client {:?}, id: {:?}, p: {:?}, participants: {:?}", client, id, p, peers_formatted)) -> dest_sink(file_sink)`
 ######################## end relation definitions
 
 # Phase 1a
@@ -160,6 +161,7 @@ AllAcks(client, id, payload, src) :- ackFromParticipant(client, id, payload, src
 
 NumAcks(client, id, count(src)) :- AllAcks(client, id, payload, src)
 completed(client, id, payload) :- NumAcks(client, id, num), AllAcks(client, id, payload, src), numParticipants(num)
+logCommit(client, id, payload) :- completed(client, id, payload)
 clientOut@client(v) :~ completed(client, id, v)
     "#
     );

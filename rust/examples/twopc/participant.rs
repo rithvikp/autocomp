@@ -36,6 +36,7 @@ pub async fn run(cfg: ParticipantArgs, mut ports: HashMap<String, ServerOrBound>
         .await;
 
     let peers = vote_from_participant_port.keys.clone();
+    let peers_formatted = format!("{:?}", peers);
     let vote_from_participant_sink = vote_from_participant_port.into_sink();
 
     let commit_to_participant_source = ports
@@ -81,14 +82,16 @@ pub async fn run(cfg: ParticipantArgs, mut ports: HashMap<String, ServerOrBound>
 .async commitToParticipant `null::<(u32,i64,Rc<Vec<u8>>,)>()` `source_stream(commit_to_participant_source) -> map(|x| deserialize_from_bytes::<(u32,i64,Rc<Vec<u8>>,)>(x.unwrap().1).unwrap())`
 .async ackFromParticipant `map(|(node_id, v)| (node_id, serialize_to_bytes(v))) -> dest_sink(ack_from_participant_sink)` `null::<(u32,i64,Rc<Vec<u8>>,u32,)>()`
 
-.output logVote `map(|(client, id,p):(u32,i64,Rc<Vec<u8>>)| format!("client {:?}, id: {:?}, p: {:?}", client, id, p)) -> dest_sink(file_sink)`
+.output logVote `map(|(client, id,p):(u32,i64,Rc<Vec<u8>>)| format!("client {:?}, id: {:?}, p: {:?}, coordinator: {:?}", client, id, p, peers_formatted)) -> dest_sink(file_sink)`
 // .output logVoteComplete `for_each(|(client,id,p,):(u32,i64,Rc<Vec<u8>>,)| println!("logVoteComplete: client {:?}, id: {:?}, p: {:?}", client, id, p))`
 ######################## end relation definitions
 
 logVote(client, id, p) :- voteToParticipant(client, id, p)
 logVoteComplete(client, id, p) :+ voteToParticipant(client, id, p)
 voteFromParticipant@addr(client, id, p, i) :~ logVoteComplete(client, id, p), coordinator(addr), myID(i)
-ackFromParticipant@addr(client, id, p, i) :~ commitToParticipant(client, id, p), coordinator(addr), myID(i)
+logVote(client, id, p) :- commitToParticipant(client, id, p)
+logCommitComplete(client, id, p) :+ commitToParticipant(client, id, p)
+ackFromParticipant@addr(client, id, p, i) :~ logCommitComplete(client, id, p), coordinator(addr), myID(i)
         "#
     );
 

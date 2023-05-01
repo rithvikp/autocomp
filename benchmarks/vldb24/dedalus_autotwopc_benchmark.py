@@ -14,12 +14,12 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'vote_requesters': 3,
-                    'participant_voters': 3*3,
-                    'committers': 3,
-                    'participant_ackers': 3*3,
-                    'enders': 3,
-                    'clients': 3,
+                    'vote_requesters': 5,
+                    'participant_voters': 3*5,
+                    'committers': 5,
+                    'participant_ackers': 3*5,
+                    'enders': 5,
+                    'clients': 7,
                 },
             }
         
@@ -59,25 +59,30 @@ def main(args) -> None:
                 # for num_replicas in [3, 5]
                 for (num_client_procs, num_clients_per_proc) in [
                     (1, 1),
-                    (1, 50),
-                    (1, 100),
-                    (2, 100),
-                    (3, 100),
+                    # (1, 50),
+                    # (1, 100),
+                    # (2, 100),
+                    # (3, 100),
                     # (4, 100),
-                    # (5, 100),
-                    # (6, 100),
-                    # (7, 100),
+                    (5, 100),
+                    (6, 100),
+                    (7, 100),
                     # (8, 100),
                     # (9, 100),
                     # (10, 100),
                 ]
                 for num_participants in [3]
-                for num_vote_requesters in [3]
-                for num_participant_voter_partitions in [3]
-                for num_committers in [3]
-                for num_participant_acker_partitions in [3]
-                for num_enders in [3]
+                # for num_vote_requesters in [3]
+                # for num_participant_voter_partitions in [3]
+                # for num_committers in [3]
+                # for num_participant_acker_partitions in [3]
+                # for num_enders in [3]
                 for leader_flush_every_n in [1] #[15,1]
+                for (num_vote_requesters, num_participant_voter_partitions, num_committers, num_participant_acker_partitions, num_enders) in [
+                    # (1, 1, 1, 1, 1),
+                    # (3, 3, 3, 3, 3),
+                    (5, 5, 5, 5, 5),
+                ]
             ] *3
 
         def summary(self, input: Input, output: Output) -> str:

@@ -30,12 +30,16 @@ pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) 
         .await
         .into_source();
 
-    let commit_to_participant_sink = ports
+    let commit_to_participant = ports
         .remove("send_to$participant_ackers$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
-        .await
-        .into_sink();
+        .await;
+
+    let peers = commit_to_participant.keys.clone();
+    let peers_formatted = format!("{:?}", peers);
+    // println!("peers: {:?}", peers);
+    let commit_to_participant_sink = commit_to_participant.into_sink();
 
     let num_participants = i64::from(cfg.committer_num_participants.unwrap());
     let num_participant_acker_partitions =
@@ -71,7 +75,7 @@ pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) 
 .async voteFromParticipant `null::<(u32,i64,Rc<Vec<u8>>,u32)>()` `source_stream(vote_from_participant_source) -> map(|v| deserialize_from_bytes::<(u32,i64,Rc<Vec<u8>>,u32)>(v.unwrap().1).unwrap())`
 .async commitToParticipant `map(|(node_id, v):(i64,(u32,i64,Rc<Vec<u8>>))| (u32::try_from(node_id).unwrap(), serialize_to_bytes(v))) -> dest_sink(commit_to_participant_sink)` `null::<(u32,i64,Rc<Vec<u8>>)>()`
 
-.output logCommit `map(|(tid,p):(i64,Rc<Vec<u8>>)| format!("tid: {:?}, p: {:?}", tid, p)) -> dest_sink(file_sink)`
+.output logCommit `map(|(client, id, p):(u32,i64,Rc<Vec<u8>>)| format!("client {:?}, id: {:?}, p: {:?}, participants: {:?}", client, id, p, peers_formatted)) -> dest_sink(file_sink)`
 # For some reason Hydroflow can't infer the type of logCommitComplete, so we define it manually:
 .input logCommitComplete `null::<(u32,i64,Rc<Vec<u8>>)>()`
 ######################## end relation definitions
@@ -82,7 +86,7 @@ AllVotes(client, id, payload, src) :- voteFromParticipant(client, id, payload, s
 
 NumYesVotes(client, id, count(src)) :- AllVotes(client, id, payload, src)
 committed(client, id, payload) :- NumYesVotes(client, id, num), AllVotes(client, id, payload, src), numParticipants(num) 
-logCommit(id, payload) :- committed(client, id, payload)
+logCommit(client, id, payload) :- committed(client, id, payload)
 logCommitComplete(client, id, payload) :+ committed(client, id, payload)
 commitToParticipant@(s+(id%n))(client, id, payload) :~ logCommitComplete(client, id, payload), numParticipantACKers(n), participantACKerStartIDs(s) 
     "#

@@ -30,12 +30,15 @@ pub async fn run(cfg: ParticipantVoterArgs, mut ports: HashMap<String, ServerOrB
         .await
         .into_source();
 
-    let vote_from_participant_sink = ports
+    let vote_from_participant_port = ports
         .remove("send_to$committers$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
-        .await
-        .into_sink();
+        .await;
+
+    let peers = vote_from_participant_port.keys.clone();
+    let peers_formatted = format!("{:?}", peers);
+    let vote_from_participant_sink = vote_from_participant_port.into_sink();
 
     let my_id = cfg.participant_voter_index.unwrap();
     let num_committers = i64::from(cfg.participant_voter_num_committers.unwrap());
@@ -64,12 +67,12 @@ pub async fn run(cfg: ParticipantVoterArgs, mut ports: HashMap<String, ServerOrB
 .async voteToParticipant `null::<(u32,i64,Rc<Vec<u8>>,)>()` `source_stream(vote_to_participant_source) -> map(|x| deserialize_from_bytes::<(u32,i64,Rc<Vec<u8>>,)>(x.unwrap().1).unwrap())`
 .async voteFromParticipant `map(|(node_id, v)| (u32::try_from(node_id).unwrap(), serialize_to_bytes(v))) -> dest_sink(vote_from_participant_sink)` `null::<(u32,i64,Rc<Vec<u8>>,u32)>()`
 
-.output logVote `map(|(tid,p):(i64,Rc<Vec<u8>>)| format!("tid: {:?}, p: {:?}", tid, p)) -> dest_sink(file_sink)`
+.output logVote `map(|(client, id,p):(u32,i64,Rc<Vec<u8>>)| format!("client {:?}, id: {:?}, p: {:?}, coordinator: {:?}", client, id, p, peers_formatted)) -> dest_sink(file_sink)`
 # For some reason Hydroflow can't infer the type of logVoteComplete, so we define it manually:
 .input logVoteComplete `null::<(u32,i64,Rc<Vec<u8>>)>()`
 ######################## end relation definitions
 
-logVote(id, p) :- voteToParticipant(client, id, p)
+logVote(client, id, p) :- voteToParticipant(client, id, p)
 logVoteComplete(client, id, p) :+ voteToParticipant(client, id, p)
 voteFromParticipant@(id%n)(client, id, p, i) :~ logVoteComplete(client, id, p), myID(i), numCommitters(n)
     "#
