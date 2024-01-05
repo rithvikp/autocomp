@@ -1,11 +1,15 @@
-# Autocomp
+# Optimizing Distributed Protocols with Query Rewrites
+David Chu, Rithvik Panchapakesan, Shadaj Laddad, Lucky Katahanas, Chris Liu, Kaushik Shivakumar, Natacha Crooks, Joseph M. Hellerstein, Heidi Howard  
+_SIGMOD '24_
+
+[`Technical Report`](https://github.com/rithvikp/autocomp/blob/master/benchmarks/vldb24/Automatic_Compartmentalization_tr.pdf)
 
 This repository contains the implementations of various state machine replication protocols in both Scala and Dedalus. It was initially forked from [frankenpaxos](https://github.com/mwhittaker/frankenpaxos) by Michael Whittaker.
 
 Core scala code is in the [`shared`](shared/) directory, core rust code is in the [`rust`](rust/) directory, JVM-specific code is in the
 [`jvm/`](jvm/) directory, and Javascript-specific code is in the [`js/`](js/) directory.
 
-For the benchmark scripts used in our VLDB '24 submission, as well as the [`technical report`](https://github.com/rithvikp/autocomp/blob/master/benchmarks/vldb24/Automatic_Compartmentalization_tr.pdf), please look at [`benchmarks/vldb24/README.md`](benchmarks/vldb24/README.md). To view the implementations of the protocols in this submission, refer to the next section.
+For the benchmark scripts used in our SIGMOD '24 submission, please look at [`benchmarks/vldb24/README.md`](benchmarks/vldb24/README.md). To view the implementations of the protocols in this submission, refer to the next section.
 
 ## Protocols
 Note that all the Dedalus protocols still use Scala clients.
