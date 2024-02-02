@@ -17,6 +17,8 @@ use std::{collections::HashMap, io::Cursor, path::Path, rc::Rc};
 use tokio::fs;
 use tokio::fs::OpenOptions;
 use tokio::time::{interval_at, Duration, Instant};
+use sha2::Sha256;
+use hmac::{Hmac, Mac};
 
 #[derive(clap::Args, Debug)]
 pub struct ReplicaArgs {
@@ -27,7 +29,8 @@ pub struct ReplicaArgs {
 }
 
 // TODO: Create a digest of the command
-fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,)> {
+// Output: Command, sigc, digest
+fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
     if msg.len() == 0 {
         return None;
     }
@@ -35,24 +38,38 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,)> {
 
     match s.request.unwrap() {
         multipaxos_proto::leader_inbound::Request::ClientRequest(r) => {
-            let out = multipaxos_proto::CommandBatchOrNoop {
-                value: Some(
-                    multipaxos_proto::command_batch_or_noop::Value::CommandBatch(
-                        multipaxos_proto::CommandBatch {
-                            command: vec![r.command],
-                        },
-                    ),
-                ),
-            };
-            let mut buf = Vec::new();
-            out.encode(&mut buf).unwrap();
-            return Some((Rc::new(buf),));
+            // TODO: Move the logic below so we only create the batch when sending to the state machine
+            // let out = multipaxos_proto::CommandBatchOrNoop {
+            //     value: Some(
+            //         multipaxos_proto::command_batch_or_noop::Value::CommandBatch(
+            //             multipaxos_proto::CommandBatch {
+            //                 command: vec![r.command],
+            //             },
+            //         ),
+            //     ),
+            // };
+
+            // Command            
+            let mut command_buf = Vec::new();
+            out.encode(&mut command_buf).unwrap();
+            // Sigc
+
+            // Digest
+            
+
+
+            // Verify Sigc
+            let client_key = b"75a651b30273ba7ccc9d314aab6d6544"; // # ggignore. This tells GitGuardian to not warn me about leaked keys
+            let mut mac = Hmac::<Sha256>::new_from_slice(client_key).unwrap();
+
+
+            return Some((Rc::new(command_buf),));
         }
         _ => panic!("Unexpected message from the client"),
     }
 }
 
-// TODO sign output to client?
+// TODO sign output to SMR?
 fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
     let command =
         multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload.as_ref())).unwrap();
@@ -73,7 +90,19 @@ fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
 
 // Note: This key is just used for testing and it's ok if it's public on GitHub.
 let mac_key = b"75a651b30273ba7ccc9d314aab6d6544";
-// TODO: We technically need to create an authenticator of MACs (one sig for each replica)
+
+fn sign(sender: u32, receiver: u32) -> bytes::Bytes {
+    // TODO: Assumes existence of "keys" 2d authenticator array, 1st dimension = larger index
+    let key;
+    if sender > receiver {
+        key = keys[sender][receiver];
+    } else {
+        key = keys[receiver][sender];
+    }
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).unwrap();
+
+    // TODO: truncate mac
+}
 
 // Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
 fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc: Rc<Vec<u8>>) -> bytes::Bytes {

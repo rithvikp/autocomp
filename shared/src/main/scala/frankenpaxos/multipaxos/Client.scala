@@ -54,7 +54,9 @@ case class ClientOptions(
     // flush read channels every flushReadsEveryN messages sent.
     flushWritesEveryN: Int,
     flushReadsEveryN: Int,
-    measureLatencies: Boolean
+    measureLatencies: Boolean,
+    // True if the client appends the digest and signature of the digest to commands
+    signMessage: Boolean
 )
 
 @JSExportAll
@@ -69,7 +71,8 @@ object ClientOptions {
     unsafeReadAtI = false,
     flushWritesEveryN = 1,
     flushReadsEveryN = 1,
-    measureLatencies = true
+    measureLatencies = true,
+    signMessages = false
   )
 }
 
@@ -565,6 +568,24 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
+  // Hash command for PBFT. Make sure PBFT is also using SHA-256
+  private def createDigest(
+    command: Array[Byte]
+  ): Array[Byte] = {
+    MessageDigest.getInstance("SHA-256").digest(command)
+  }
+
+  // Sign. Make sure the key is sync'd with the primary in PBFT
+  private def sign(
+      digest: Array[Byte]
+  ): Array[Byte] = {
+    // For testing so it's ok if it's leaked on GitHub
+    val macKey = "75a651b30273ba7ccc9d314aab6d6544"; // # ggignore
+    val mac = Mac.getInstance("hmacSHA256")
+    mac.init(new SecretKeySpec(macKey.getBytes, "hmacSHA256"))
+    mac.doFinal(digest)
+  }
+
   private def writeImpl(
       pseudonym: Pseudonym,
       command: Array[Byte],
@@ -584,12 +605,15 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       case None =>
         // Send the command.
         val id = ids.getOrElse(pseudonym, 0)
+        val digest = createDigest(command)
         val clientRequest = ClientRequest(
           command = Command(
             commandId = CommandId(clientAddress = addressAsBytes,
                                   clientPseudonym = pseudonym,
                                   clientId = id),
-            command = ByteString.copyFrom(command)
+            command = ByteString.copyFrom(command),
+            signature = sign(digest),
+            digest = digest
           )
         )
         sendClientRequest(clientRequest, forceFlush = false)

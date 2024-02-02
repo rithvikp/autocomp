@@ -201,6 +201,9 @@ message Command {
 
   required CommandId command_id = 1;
   required bytes command = 2;
+  // Signature and digest for PBFT
+  bytes signature = 3;
+  bytes digest = 4;
 }
 
 message CommandBatch {
