@@ -1,22 +1,15 @@
-use frankenpaxos::voting_proto;
+use frankenpaxos::multipaxos_proto;
 use hydroflow::bytes::BytesMut;
-use hydroflow::tokio_stream::wrappers::IntervalStream;
-use hydroflow::{
-    tokio_util::codec::{Framed, LinesCodec},
-    util::{
-        cli::{
-            launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
-            ConnectedTagged, ServerOrBound,
-        },
-        deserialize_from_bytes, serialize_to_bytes,
+use hydroflow::util::{
+    cli::{
+        launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
+        ConnectedTagged, ServerOrBound,
     },
+    deserialize_from_bytes, serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
-use std::{collections::HashMap, io::Cursor, path::Path, rc::Rc};
-use tokio::fs;
-use tokio::fs::OpenOptions;
-use tokio::time::{interval_at, Duration, Instant};
+use std::{collections::HashMap, io::Cursor, rc::Rc};
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
 
@@ -37,15 +30,15 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
 
     match s.request.unwrap() {
         multipaxos_proto::leader_inbound::Request::ClientRequest(r) => {
-            let command = vec![r.command];
-            let sigc = vec![r.signature];
-            let digest = vec![r.digest];
+            let command = r.command.command.clone();
+            let sigc = r.command.signature.clone().unwrap(); // TODO: Needs to safely handle None so Byzantine clients can't crash the PBFT replica
+            let digest = r.command.digest.clone().unwrap();
 
             // Verify the digest is from the command
             let mut hasher = Sha256::new();
             hasher.update(command);
             let result = hasher.finalize();
-            if result != digest {
+            if &result[..] != digest {
                 panic!("Client digest {:?} didn't match expected digest {:?}", digest, result)
                 // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
             }
@@ -54,12 +47,25 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
             let client_key = b"clientPrimaryKey";
             let mut mac = Hmac::<Sha256>::new_from_slice(client_key).unwrap();
             mac.update(digest.as_slice());
-            if mac.verify(sigc).is_err() {
+            if mac.verify_slice(sigc.as_slice()).is_err() {
                 panic!("Client signature {:?} was incorrect", sigc)
                 // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
             }
 
-            Some((Rc::new(command), Rc::new(sigc), Rc::new(digest),))
+            // Create the output message ready to send to clients. Nested structure is too complex for us to take apart and pass around, so just pass this big blob
+            let out = multipaxos_proto::CommandBatchOrNoop {
+                value: Some(
+                    multipaxos_proto::command_batch_or_noop::Value::CommandBatch(
+                        multipaxos_proto::CommandBatch {
+                            command: vec![r.command],
+                        },
+                    ),
+                ),
+            };
+            let mut buf = Vec::new();
+            out.encode(&mut buf).unwrap();
+
+            Some((Rc::new(buf), Rc::new(sigc), Rc::new(digest),))
         }
         _ => panic!("Unexpected message from the client"), // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
     }
@@ -67,19 +73,14 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
 
 // TODO sign output to SMR?
 fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
+    let command =
+        multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload.as_ref())).unwrap();
+
     let out = multipaxos_proto::ReplicaInbound {
         request: Some(multipaxos_proto::replica_inbound::Request::Chosen(
             multipaxos_proto::Chosen {
                 slot: i32::try_from(slot).unwrap() - 1, // Dedalus starts at slot 1
-                command_batch_or_noop: multipaxos_proto::CommandBatchOrNoop {
-                    value: Some(
-                        multipaxos_proto::command_batch_or_noop::Value::CommandBatch(
-                            multipaxos_proto::CommandBatch {
-                                command: payload.as_ref().clone(),
-                            },
-                        ),
-                    ),
-                }
+                command_batch_or_noop: command,
             },
         )),
     };
@@ -97,10 +98,10 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
     } else {
         key = replica_2_id * 10 + replica_1_id;
     }
-    Hmac::<Sha256>::new(key.to_be_bytes()).unwrap()
+    Hmac::<Sha256>::new_from_slice(&key.to_be_bytes()).unwrap()
 }
 
-fn sign(digest: Rc<Vec<u8>>, replica_1_id: u32, replica_2_id: u32) -> bytes::Bytes {
+fn sign(digest: Rc<Vec<u8>>, replica_1_id: u32, replica_2_id: u32) -> Vec<u8> {
     // Key scheme: If replica 1 is writing to replica 2, then the key is b"12". Lowest id first, so replica 2 writing to replica 1 uses the same key.
     let mut key;
     if replica_1_id < replica_2_id {
@@ -109,27 +110,27 @@ fn sign(digest: Rc<Vec<u8>>, replica_1_id: u32, replica_2_id: u32) -> bytes::Byt
         key = replica_2_id * 10 + replica_1_id;
     }
     // Note: we will consistently use big endian (be) between nodes
-    let mut mac = Hmac::<Sha256>::new(key.to_be_bytes()).unwrap();
-    mac.update(digest);
-    mac.finalize().into_bytes()
+    let mut mac = Hmac::<Sha256>::new_from_slice(&key.to_be_bytes()).unwrap();
+    mac.update(digest.as_slice());
+    mac.finalize().into_bytes().to_vec()
 }
 
 // Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc: Rc<Vec<u8>>, receiver: i32) -> (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>) {
+fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc: Rc<Vec<u8>>, receiver: u32) -> (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>) {
     // sender = 0 because only the leader (id = 0) sends prePrepares
     let mut mac = get_mac(0, receiver);
-    mac.update(slot);
+    mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
     let sigp = mac.finalize().into_bytes();
-    (slot, digest, sigp, command, sigc)
+    (slot, digest, Rc::new(sigp.to_vec()), command, sigc)
 }
 
-fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), receiver: i32) -> Optional<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)> {
+fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)> {
     let (slot, digest, sigp, command, sigc) = msg;
     let mut mac = get_mac(0, receiver);
-    mac.update(slot);
+    mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
-    if mac.verify(sigp).is_err() {
+    if mac.verify_slice(sigp.as_slice()).is_err() {
         panic!("PrePrepare leader signature {:?} was incorrect", sigp)
         // TODO: Change to return None after debugging, so a Byzantine primary can't crash the replica
     }
@@ -138,22 +139,22 @@ fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u
 }
 
 // Simplified prepare (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
-fn create_prepare(slot: u32, digest: Rc<Vec<u8>>, sender: i32, receiver: i32) -> bytes::Bytes {
+fn create_prepare(slot: u32, digest: Rc<Vec<u8>>, sender: u32, receiver: u32) -> (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>) {
     let mut mac = get_mac(sender, receiver);
-    mac.update(slot);
+    mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
-    mac.update(sender);
+    mac.update(&sender.to_be_bytes());
     let sigi = mac.finalize().into_bytes();
-    (slot, digest, sender, sigi)
+    (slot, digest, sender, Rc::new(sigi.to_vec()))
 }
 
-fn unwrap_prepare(msg: (u32, Rc<Vec<u8>>, i32, Rc<Vec<u8>>), receiver: i32) -> Optional<bytes::Bytes> {
+fn unwrap_prepare(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
     let (slot, digest, sender, sigi) = msg;
     let mut mac = get_mac(sender, receiver);
-    mac.update(slot);
+    mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
-    mac.update(sender);
-    if mac.verify(sigi).is_err() {
+    mac.update(&sender.to_be_bytes());
+    if mac.verify_slice(sigi.as_slice()).is_err() {
         panic!("Prepare signature {:?} from {:?} was incorrect", sigi, sender)
         // TODO: Change to return None after debugging, so another Byzantine replica can't crash this replica
     }
@@ -161,22 +162,22 @@ fn unwrap_prepare(msg: (u32, Rc<Vec<u8>>, i32, Rc<Vec<u8>>), receiver: i32) -> O
 }
 
 // Simplified commit (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
-fn create_commit(sender: i32, receiver: i32) -> bytes::Bytes {
+fn create_commit(slot: u32, digest: Rc<Vec<u8>>, sender: u32, receiver: u32) -> (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>) {
     let mut mac = get_mac(sender, receiver);
-    mac.update(slot);
-    mac.update(digest);
-    mac.update(sender);
+    mac.update(&slot.to_be_bytes());
+    mac.update(digest.as_slice());
+    mac.update(&sender.to_be_bytes());
     let sigi = mac.finalize().into_bytes();
-    (slot, digest, sender, sigi)
+    (slot, digest, sender, Rc::new(sigi.to_vec()))
 }
 
-fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, i32, Rc<Vec<u8>>), receiver: i32) -> Optional<bytes::Bytes> {
+fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
     let (slot, digest, sender, sigi) = msg;
     let mut mac = get_mac(sender, receiver);
-    mac.update(slot);
+    mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
-    mac.update(sender);
-    if mac.verify(sigi).is_err() {
+    mac.update(&sender.to_be_bytes());
+    if mac.verify_slice(sigi.as_slice()).is_err() {
         panic!("Commit signature {:?} from {:?} was incorrect", sigi, sender)
         // TODO: Change to return None after debugging, so another Byzantine replica can't crash this replica
     }
@@ -246,7 +247,7 @@ pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>
         .connect::<ConnectedDemux<ConnectedBidi>>()
         .await;
 
-    let replicas = replica_port.keys.clone();
+    let replica = replica_port.keys.clone();
     let replica_send = replica_port.into_sink();
 
     let my_id = cfg.index.unwrap();
@@ -279,23 +280,23 @@ pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>
 
 # Pre-prepare (v = view, n = slot, d = hash digest of m, sig(p) = signature of (v,n,d), m = <o = command operation, t = timestamp, c = client>, sig(c) = signature of (o,t,c)).
 # Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-.async prePrepareOut `map(|(node_id, (slot, digest, command, sigc))| (node_id, create_pre_prepare(slot, digest, command, sigc, node_id))) -> dest_sink(pre_prepare_to_pbft_replica_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
-.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_pbft_replica_source) -> filter_map(|x: Result<(u32, BytesMut, BytesMut, BytesMut, BytesMut), _>| (unwrap_pre_prepare(deserialize(x.unwrap().1), my_id)))`
+.async prePrepareOut `map(|(node_id, (slot, digest, command, sigc))| (node_id, serialize_to_bytes(create_pre_prepare(slot, digest, command, sigc, node_id)))) -> dest_sink(pre_prepare_to_pbft_replica_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
+.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_pbft_replica_source) -> filter_map(|x| (unwrap_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id)))`
 
 # Prepare (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified prepare (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
-.async prepareOut `map(|(node_id, (slot, digest, i))| (node_id, create_prepare(slot, digest, i, node_id))) -> dest_sink(prepare_to_pbft_replica_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
-.async prepareIn `null::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>()` `source_stream(prepare_from_pbft_replica_source) -> filter_map(|x: Result<(u32, BytesMut, u32, BytesMut), _>| (unwrap_prepare(deserialize(x.unwrap().1), my_id)))`
+.async prepareOut `map(|(node_id, (slot, digest, i))| (node_id, serialize_to_bytes(create_prepare(slot, digest, i, node_id)))) -> dest_sink(prepare_to_pbft_replica_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
+.async prepareIn `null::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>()` `source_stream(prepare_from_pbft_replica_source) -> filter_map(|x| (unwrap_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id)))`
 
 # Commit (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified commit (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
-.async commitOut `map(|(node_id, (slot, digest, i))| (node_id, create_commit(slot, digest, i, node_id))) -> dest_sink(commit_to_pbft_replica_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
-.async commitIn `null::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>()` `source_stream(commit_from_pbft_replica_source) -> filter_map(|x: Result<(u32, BytesMut, u32, BytesMut), _>| (unwrap_commit(deserialize(x.unwrap().1), my_id)))`
+.async commitOut `map(|(node_id, (slot, digest, i))| (node_id, serialize_to_bytes(create_commit(slot, digest, i, node_id)))) -> dest_sink(commit_to_pbft_replica_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
+.async commitIn `null::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>()` `source_stream(commit_from_pbft_replica_source) -> filter_map(|x| (unwrap_commit(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id)))`
 
 ######################## end relation definitions
 
 .persist prePrepareLog
-.persist perpareLog
+.persist prepareLog
 .persist commitLog
 
 IsLeader() :- leaderId(i), id(i)
@@ -303,17 +304,19 @@ slots(s) :- startSlot(s)
 nextSlot(max(s)) :- slots(s)
 
 ######################## pre-prepare
-IndexedPayloads(command, sigc, digest, index()) :~ clientIn(command, sigc, digest), IsLeader()
+IndexedPayloads(command, sigc, digest, index()) :- clientIn(command, sigc, digest), IsLeader()
 prePrepareOut@r((slot+offset), digest, command, sigc) :~ IndexedPayloads(command, sigc, digest, offset), nextSlot(slot), pbftReplicas(r)
 
 # Increment slot
-NumPayloads(max(offset) + 1) :- IndexedPayloads(_, _, _, offset)
-slots(s + num) :+ nextSlot(s), NumPayloads(num)
+NumPayloads(max(offset)) :- IndexedPayloads(_, _, _, offset)
+slots(s + num + 1) :+ nextSlot(s), NumPayloads(num)
 ######################## end pre-prepare
 
 ######################## prepare
 prePrepareLog(slot, digest, sigp, command, sigc) :- prePrepareIn(slot, digest, sigp, command, sigc)
 prepareOut@r(slot, digest, i) :~ prePrepareIn(slot, digest, sigp, command, sigc), pbftReplicas(r), id(i)
+pendingPrePrepares(slot, digest, command) :- prePrepareIn(slot, digest, _, command, _)
+pendingPrePrepares(slot, digest, command) :+ pendingPrePrepares(slot, digest, command), !replySent(slot, digest)
 ######################## end prepare
 
 ######################## commit
@@ -323,8 +326,6 @@ numPrepares(slot, digest, count(i)) :- pendingPrepares(slot, digest, _, i), !com
 shouldSendCommit(slot, digest) :- numPrepares(slot, digest, c), quorum(q), (c >= q), !commitSent(slot, digest)
 commitOut@r(slot, digest, i) :~ shouldSendCommit(slot, digest), pbftReplicas(r), id(i)
 
-# Store own commit locally
-commitLog(slot, digest, i) :- shouldSendCommit(slot, digest)
 # Persist prepares until we get it from all 3f+1 replicas
 fullPrepare(slot, digest) :- numPrepares(slot, digest, c), fullQuorum(c)
 pendingPrepares(slot, digest, sigp, i) :+ pendingPrepares(slot, digest, sigp, i), !fullPrepare(slot, digest)
@@ -336,7 +337,7 @@ commitSent(slot, digest) :+ commitSent(slot, digest), !fullPrepare(slot, digest)
 commitLog(slot, digest, i) :- commitIn(slot, digest, i, sigi) # Note: sigi is not stored, because the commit log is not used during view-change so we don't need to prove to others that this is the message we got.
 pendingCommits(slot, digest, i) :- commitIn(slot, digest, i, sigi)
 numCommits(slot, digest, count(i)) :- pendingCommits(slot, digest, i), !replySent(slot, digest)
-shouldSendReply(slot, digest, command) :- numCommits(slot, digest, c), quorum(q), (c >= q), !replySent(slot, digest)
+shouldSendReply(slot, digest, command) :- numCommits(slot, digest, c), quorum(q), (c >= q), pendingPrePrepares(slot, digest, command), !replySent(slot, digest)
 clientOut@r(command, slot) :~ shouldSendReply(slot, _, command), replica(r)
 
 fullCommit(slot, digest) :- numCommits(slot, digest, c), fullQuorum(c)
