@@ -18,6 +18,7 @@ import scala.scalajs.js.annotation._
 import scala.util.Random
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import java.security.MessageDigest
 
 @JSExportAll
 object ClientInboundSerializer extends ProtoSerializer[ClientInbound] {
@@ -58,7 +59,7 @@ case class ClientOptions(
     flushReadsEveryN: Int,
     measureLatencies: Boolean,
     // True if the client appends the digest and signature of the digest to commands
-    signMessage: Boolean
+    signMessages: Boolean
 )
 
 @JSExportAll
@@ -613,8 +614,8 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
                                   clientPseudonym = pseudonym,
                                   clientId = id),
             command = ByteString.copyFrom(command),
-            signature = sign(digest),
-            digest = digest
+            signature = Some(ByteString.copyFrom(sign(digest))),
+            digest = Some(ByteString.copyFrom(digest))
           )
         )
         sendClientRequest(clientRequest, forceFlush = false)
