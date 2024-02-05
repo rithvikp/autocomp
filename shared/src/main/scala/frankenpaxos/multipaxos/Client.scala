@@ -16,6 +16,8 @@ import scala.concurrent.Future
 import scala.concurrent.Promise
 import scala.scalajs.js.annotation._
 import scala.util.Random
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 @JSExportAll
 object ClientInboundSerializer extends ProtoSerializer[ClientInbound] {
@@ -579,8 +581,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   private def sign(
       digest: Array[Byte]
   ): Array[Byte] = {
-    // For testing so it's ok if it's leaked on GitHub
-    val macKey = "75a651b30273ba7ccc9d314aab6d6544"; // # ggignore
+    val macKey = "clientPrimaryKey" 
     val mac = Mac.getInstance("hmacSHA256")
     mac.init(new SecretKeySpec(macKey.getBytes, "hmacSHA256"))
     mac.doFinal(digest)

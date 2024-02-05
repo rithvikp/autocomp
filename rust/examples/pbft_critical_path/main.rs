@@ -1,9 +1,9 @@
 use clap::Parser;
-mod replica;
+mod pbft_replica;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 enum Service {
-    Replica,
+    PBFTReplica,
 }
 
 #[derive(Parser, Debug)]
@@ -17,7 +17,7 @@ struct Args {
     prometheus_port: i32,
 
     #[clap(flatten)]
-    replica: replica::ReplicaArgs,
+    pbft_replica: pbft_replica::PBFTReplicaArgs,
 }
 
 #[tokio::main]
@@ -27,6 +27,6 @@ async fn main() {
     let ports = hydroflow::util::cli::init().await;
 
     match args.service {
-        Service::Replica => replica::run(args.replica, ports).await,
+        Service::PBFTReplica => pbft_replica::run(args.pbft_replica, ports).await,
     };
 }
