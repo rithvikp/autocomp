@@ -27,12 +27,14 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
         return None;
     }
     let s = multipaxos_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
+    // println!("Primary received {:?}", s);
 
     match s.request.unwrap() {
         multipaxos_proto::leader_inbound::Request::ClientRequest(r) => {
             let command = r.command.command.clone();
             let sigc = r.command.signature.clone().unwrap(); // TODO: Needs to safely handle None so Byzantine clients can't crash the PBFT replica
             let digest = r.command.digest.clone().unwrap();
+            // println!("Command {:?}, sigc {:?}, digest {:?}", command[0], sigc[0], digest[0]);
 
             // Verify the digest is from the command
             let mut hasher = Sha256::new();
@@ -42,6 +44,7 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
                 panic!("Client digest {:?} didn't match expected digest {:?}", digest, result)
                 // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
             }
+            // println!("Digest {:?} matched, checking sig", digest[0]);
 
             // Verify the signature is signed over the digest
             let client_key = b"clientPrimaryKey";
@@ -51,6 +54,7 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
                 panic!("Client signature {:?} was incorrect", sigc)
                 // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
             }
+            // println!("Sig {:?} matched, creating output batch", sigc[0]);
 
             // Create the output message ready to send to clients. Nested structure is too complex for us to take apart and pass around, so just pass this big blob
             let out = multipaxos_proto::CommandBatchOrNoop {
@@ -79,11 +83,12 @@ fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
     let out = multipaxos_proto::ReplicaInbound {
         request: Some(multipaxos_proto::replica_inbound::Request::Chosen(
             multipaxos_proto::Chosen {
-                slot: i32::try_from(slot).unwrap() - 1, // Dedalus starts at slot 1
+                slot: i32::try_from(slot).unwrap(),
                 command_batch_or_noop: command,
             },
         )),
     };
+    // println!("Sending to replica payload {:?} slot {:?}", payload[0], slot);
 
     let mut buf = Vec::new();
     out.encode(&mut buf).unwrap();
@@ -92,7 +97,7 @@ fn serialize(payload: Rc<Vec<u8>>, slot: u32) -> bytes::Bytes {
 
 fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
     // Key scheme: If replica 1 is writing to replica 2, then the key is b"12". Lowest id first, so replica 2 writing to replica 1 uses the same key.
-    let mut key;
+    let key;
     if replica_1_id < replica_2_id {
         key = replica_1_id * 10 + replica_2_id;
     } else {
@@ -101,32 +106,21 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
     Hmac::<Sha256>::new_from_slice(&key.to_be_bytes()).unwrap()
 }
 
-fn sign(digest: Rc<Vec<u8>>, replica_1_id: u32, replica_2_id: u32) -> Vec<u8> {
-    // Key scheme: If replica 1 is writing to replica 2, then the key is b"12". Lowest id first, so replica 2 writing to replica 1 uses the same key.
-    let mut key;
-    if replica_1_id < replica_2_id {
-        key = replica_1_id * 10 + replica_2_id;
-    } else {
-        key = replica_2_id * 10 + replica_1_id;
-    }
-    // Note: we will consistently use big endian (be) between nodes
-    let mut mac = Hmac::<Sha256>::new_from_slice(&key.to_be_bytes()).unwrap();
-    mac.update(digest.as_slice());
-    mac.finalize().into_bytes().to_vec()
-}
-
 // Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
 fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc: Rc<Vec<u8>>, receiver: u32) -> (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>) {
+    // println!("Creating prePrepare: (Slot: {:?}, {:?}, {:?}, {:?}, Receiver: {:?})", slot, digest[0], command[0], sigc[0], receiver);
     // sender = 0 because only the leader (id = 0) sends prePrepares
     let mut mac = get_mac(0, receiver);
     mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
     let sigp = mac.finalize().into_bytes();
+    // println!("Signed prePrepare: {:?}", sigp[0]);
     (slot, digest, Rc::new(sigp.to_vec()), command, sigc)
 }
 
 fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)> {
     let (slot, digest, sigp, command, sigc) = msg;
+    // println!("Unwrapping prePrepare: (Slot: {:?}, {:?}, {:?}, {:?}, Receiver: {:?})", slot, digest[0], sigp[0], command[0], receiver);
     let mut mac = get_mac(0, receiver);
     mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
@@ -134,22 +128,26 @@ fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u
         panic!("PrePrepare leader signature {:?} was incorrect", sigp)
         // TODO: Change to return None after debugging, so a Byzantine primary can't crash the replica
     }
+    // println!("PrePrepare verified: {:?}", sigp[0]);
     // TODO: Verify the command signature sigc. Needs client to send authenticator instead of single sig?
     Some((slot, digest, sigp, command, sigc))
 }
 
 // Simplified prepare (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
 fn create_prepare(slot: u32, digest: Rc<Vec<u8>>, sender: u32, receiver: u32) -> (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>) {
+    // println!("Creating prepare: (Slot: {:?}, {:?}, Sender: {:?}, Receiver: {:?})", slot, digest[0], sender, receiver);
     let mut mac = get_mac(sender, receiver);
     mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
     mac.update(&sender.to_be_bytes());
     let sigi = mac.finalize().into_bytes();
+    // println!("Signed prepare: {:?}", sigi[0]);
     (slot, digest, sender, Rc::new(sigi.to_vec()))
 }
 
 fn unwrap_prepare(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
     let (slot, digest, sender, sigi) = msg;
+    // println!("Unwrapping prepare: (Slot: {:?}, {:?}, Sender: {:?}, {:?})", slot, digest[0], sender, sigi[0]);
     let mut mac = get_mac(sender, receiver);
     mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
@@ -158,21 +156,25 @@ fn unwrap_prepare(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> O
         panic!("Prepare signature {:?} from {:?} was incorrect", sigi, sender)
         // TODO: Change to return None after debugging, so another Byzantine replica can't crash this replica
     }
+    // println!("Prepare verified: {:?}", sigi[0]);
     Some((slot, digest, sender, sigi))
 }
 
 // Simplified commit (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
 fn create_commit(slot: u32, digest: Rc<Vec<u8>>, sender: u32, receiver: u32) -> (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>) {
+    // println!("Creating commit: (Slot: {:?}, {:?}, Sender: {:?}, Receiver: {:?})", slot, digest[0], sender, receiver);
     let mut mac = get_mac(sender, receiver);
     mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
     mac.update(&sender.to_be_bytes());
     let sigi = mac.finalize().into_bytes();
+    // println!("Signed commit: {:?}", sigi[0]);
     (slot, digest, sender, Rc::new(sigi.to_vec()))
 }
 
 fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
     let (slot, digest, sender, sigi) = msg;
+    // println!("Unwrapping commit: (Slot: {:?}, {:?}, Sender: {:?}, {:?})", slot, digest[0], sender, sigi[0]);
     let mut mac = get_mac(sender, receiver);
     mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
@@ -181,6 +183,7 @@ fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Op
         panic!("Commit signature {:?} from {:?} was incorrect", sigi, sender)
         // TODO: Change to return None after debugging, so another Byzantine replica can't crash this replica
     }
+    // println!("Commit verified: {:?}", sigi[0]);
     Some((slot, digest, sender, sigi))
 }
 
@@ -309,6 +312,7 @@ prePrepareOut@r((slot+offset), digest, command, sigc) :~ IndexedPayloads(command
 
 # Increment slot
 NumPayloads(max(offset)) :- IndexedPayloads(_, _, _, offset)
+slots(s) :+ nextSlot(s), !NumPayloads(n)
 slots(s + num + 1) :+ nextSlot(s), NumPayloads(num)
 ######################## end pre-prepare
 

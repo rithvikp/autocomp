@@ -3,7 +3,7 @@ mod pbft_replica;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 enum Service {
-    PBFTReplica,
+    Pbft,
 }
 
 #[derive(Parser, Debug)]
@@ -27,6 +27,6 @@ async fn main() {
     let ports = hydroflow::util::cli::init().await;
 
     match args.service {
-        Service::PBFTReplica => pbft_replica::run(args.pbft_replica, ports).await,
+        Service::Pbft => pbft_replica::run(args.pbft_replica, ports).await,
     };
 }

@@ -1,4 +1,4 @@
-from benchmarks.multipaxos.dedalus_multipaxos import *
+from benchmarks.pbft.pbft_critical_path import *
 
 def main(args) -> None:
     class Suite(DedalusPBFTCriticalPathSuite):
@@ -13,7 +13,7 @@ def main(args) -> None:
             return {
                 '1': {
                     'replicas': 4, # Max across any benchmark
-                    'clients': 1, # Max across any benchmark
+                    'clients': 7, # Max across any benchmark
                     'pbft_replicas': 4, # Max across any benchmark
                 },
             }
@@ -26,6 +26,7 @@ def main(args) -> None:
                     num_warmup_clients_per_proc = num_clients_per_proc,
                     num_clients_per_proc = num_clients_per_proc,
                     num_pbft_replicas = 4,
+                    num_acceptors = 3,
                     num_replicas = num_replicas,
                     client_jvm_heap_size = '8g',
                     replica_jvm_heap_size = '12g',
@@ -94,21 +95,20 @@ def main(args) -> None:
                 )
 
                 for value_size in [16]
-                for num_pbft_replicas in [4]
                 for num_replicas in [4]
                 for (num_client_procs, num_clients_per_proc) in [
                     (1, 1),
-                    # (1, 50),
-                    # (1, 100),
-                    # (2, 100),
-                    # (3, 100),
-                    # (4, 100),
-                    # (5, 100, 10),
-                    # (6, 100, 10),
-                    # (7, 100, 10),
-                    # (8, 100, 10),
-                    # (9, 100, 10),
-                    # (10, 100, 10),
+                    (1, 50),
+                    (1, 100),
+                    (2, 100),
+                    (3, 100),
+                    (4, 100),
+                    (5, 100),
+                    (6, 100),
+                    (7, 100),
+                    # (8, 100),
+                    # (9, 100),
+                    # (10, 100),
                 ]
             ] *3
 

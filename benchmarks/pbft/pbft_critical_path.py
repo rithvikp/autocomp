@@ -68,6 +68,7 @@ class Input(NamedTuple):
     num_warmup_clients_per_proc: int
     num_clients_per_proc: int
     num_pbft_replicas: int
+    num_acceptors: int
     num_replicas: int
     client_jvm_heap_size: str
     replica_jvm_heap_size: str
@@ -155,6 +156,7 @@ class DedalusPBFTCriticalPathNet:
         )
 
     def config(self, index: int = 0) -> proto_util.Message:
+        pbft_replicas_only_3 = self.placement(index=index).pbft_replicas[0:3]
         return {
             'f': self._input.f,
             'batcher_address': [],
@@ -175,7 +177,7 @@ class DedalusPBFTCriticalPathNet:
                 'acceptor_address': [{
                     'host': e.host.ip(),
                     'port': e.port
-                } for e in self.placement(index=index).pbft_replicas]
+                } for e in pbft_replicas_only_3]
             }],
             'replica_address': [{
                 'host': e.host.ip(),
@@ -201,7 +203,7 @@ class DedalusPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
             for (i, pbft_replica) in enumerate(net.prom_placement().pbft_replicas):
                 pbft_replica_procs.append(self.provisioner.popen_hydroflow(bench, f'pbft_replicas_{i}', input.f, [
                     '--service',
-                    'pbft_replica',
+                    'pbft',
                     '--pbft_replica.index',
                     str(i),
                     '--pbft_replica.f',
