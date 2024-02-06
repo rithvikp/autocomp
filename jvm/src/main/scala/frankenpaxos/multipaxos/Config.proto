@@ -38,4 +38,7 @@ message NettyConfigProto {
   repeated HostPortProto p2a_proxy_leader_address = 12;
   repeated HostPortProto p2b_proxy_leader_address = 13;
   repeated HostPortProto coordinator_address = 14;
+  repeated HostPortProto prepreparer_address = 15;
+  repeated HostPortProto preparer_address = 16;
+  repeated HostPortProto committer_address = 17;
 }

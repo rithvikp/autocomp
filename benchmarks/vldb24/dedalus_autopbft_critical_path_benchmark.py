@@ -1,7 +1,7 @@
-from benchmarks.pbft.pbft_critical_path import *
+from benchmarks.autopbft.autopbft_critical_path import *
 
 def main(args) -> None:
-    class Suite(DedalusPBFTCriticalPathSuite):
+    class Suite(AutoPBFTCriticalPathSuite):
         def __init__(self, args) -> None:
             self._args = args
             super().__init__()
@@ -13,8 +13,11 @@ def main(args) -> None:
             return {
                 '1': {
                     'replicas': 4, # Max across any benchmark
-                    'clients': 2, # Max across any benchmark
-                    'pbft_replicas': 4, # Max across any benchmark
+                    'clients': 1,
+                    'leaders': 4,
+                    'prepreparers': 4*1,
+                    'preparers': 4*1,
+                    'committers': 4*1,
                 },
             }
 
@@ -26,6 +29,9 @@ def main(args) -> None:
                     num_warmup_clients_per_proc = num_clients_per_proc,
                     num_clients_per_proc = num_clients_per_proc,
                     num_pbft_replicas = 4,
+                    num_prepreparers_per_pbft_replica = num_prepreparers_per_pbft_replica,
+                    num_preparers_per_pbft_replica = num_preparers_per_pbft_replica,
+                    num_committers_per_pbft_replica = num_committers_per_pbft_replica,
                     num_acceptors = 3,
                     num_replicas = num_replicas,
                     client_jvm_heap_size = '8g',
@@ -95,6 +101,9 @@ def main(args) -> None:
                 )
 
                 for value_size in [16]
+                for num_prepreparers_per_pbft_replica in [1]
+                for num_preparers_per_pbft_replica in [1]
+                for num_committers_per_pbft_replica in [1]
                 for num_replicas in [4]
                 for (num_client_procs, num_clients_per_proc) in [
                     (1, 1),
@@ -118,7 +127,10 @@ def main(args) -> None:
                 'value_size': input.workload,
                 'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
-                'num_pbft_replicas': input.num_pbft_replicas,
+                'num_leaders': input.num_pbft_replicas,
+                'num_preprepares_per_pbft_replica': input.num_prepreparers_per_pbft_replica,
+                'num_preparers_per_pbft_replica': input.num_preparers_per_pbft_replica,
+                'num_committers_per_pbft_replica': input.num_committers_per_pbft_replica,
                 'num_replicas': input.num_replicas,
                 'write.latency.median_ms': f'{output.write_output.latency.median_ms:.6}',
                 'write.start_throughput_1s.p90': f'{output.write_output.start_throughput_1s.p90:.8}',
@@ -128,7 +140,7 @@ def main(args) -> None:
 
     suite = Suite(args)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'pbft_critical_path_lt_dedalus') as dir:
+                                  'autopbft_critical_path_lt_dedalus') as dir:
         suite.run_suite(dir)
 
 

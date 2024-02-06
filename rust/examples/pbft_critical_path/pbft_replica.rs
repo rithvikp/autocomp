@@ -189,8 +189,6 @@ fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Op
 
 // Need to provide: clients, replicas, and smr (corresponding state machine replica)
 pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>) {
-    let client_requests = prometheus::register_counter!("pbft_requests_total", "help").unwrap();
-
     // Client setup
     let client_recv = ports
         .remove("receive_from$clients$0")
