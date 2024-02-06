@@ -13,7 +13,7 @@ def main(args) -> None:
             return {
                 '1': {
                     'replicas': 4, # Max across any benchmark
-                    'clients': 7, # Max across any benchmark
+                    'clients': 6, # Max across any benchmark
                     'pbft_replicas': 4, # Max across any benchmark
                 },
             }
@@ -105,7 +105,7 @@ def main(args) -> None:
                     (4, 100),
                     (5, 100),
                     (6, 100),
-                    (7, 100),
+                    # (7, 100),
                     # (8, 100),
                     # (9, 100),
                     # (10, 100),

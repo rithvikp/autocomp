@@ -244,14 +244,12 @@ pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>
         .await
         .into_source();
 
-    let replica_port = ports
+    let replica_send = ports
         .remove("send_to$replicas$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
-        .await;
-
-    let replica = replica_port.keys.clone();
-    let replica_send = replica_port.into_sink();
+        .await
+        .into_sink();
 
     let my_id = cfg.index.unwrap();
     let f = cfg.f.unwrap();
@@ -263,7 +261,7 @@ pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>
 .input id `repeat_iter([(my_id,),])`
 .input leaderId `repeat_iter([(0,),])`
 .input pbftReplicas `repeat_iter(pbft_replicas.clone()) -> map(|p| (p,))`
-.input replica `repeat_iter(replica.clone()) -> map(|p| (p,))`
+.input replica `repeat_iter([(my_id,),])` # Note: Assumes same number of replicas as pbft_replicas, indexed from 0
 .input quorum `repeat_iter([(2*f+1,),])`
 .input fullQuorum `repeat_iter([(3*f+1,),])`
 
@@ -320,34 +318,28 @@ slots(s + num + 1) :+ nextSlot(s), NumPayloads(num)
 prePrepareLog(slot, digest, sigp, command, sigc) :- prePrepareIn(slot, digest, sigp, command, sigc)
 prepareOut@r(slot, digest, i) :~ prePrepareIn(slot, digest, sigp, command, sigc), pbftReplicas(r), id(i)
 pendingPrePrepares(slot, digest, command) :- prePrepareIn(slot, digest, _, command, _)
-pendingPrePrepares(slot, digest, command) :+ pendingPrePrepares(slot, digest, command), !replySent(slot, digest)
+pendingPrePrepares(slot, digest, command) :+ pendingPrePrepares(slot, digest, command), !fullCommit(slot, digest)
 ######################## end prepare
 
 ######################## commit
 prepareLog(slot, digest, sigp, i) :- prepareIn(slot, digest, i, sigp)
 pendingPrepares(slot, digest, sigp, i) :- prepareIn(slot, digest, i, sigp)
-numPrepares(slot, digest, count(i)) :- pendingPrepares(slot, digest, _, i), !commitSent(slot, digest)
-shouldSendCommit(slot, digest) :- numPrepares(slot, digest, c), quorum(q), (c >= q), !commitSent(slot, digest)
-commitOut@r(slot, digest, i) :~ shouldSendCommit(slot, digest), pbftReplicas(r), id(i)
-
-# Persist prepares until we get it from all 3f+1 replicas
+numPrepares(slot, digest, count(i)) :- pendingPrepares(slot, digest, _, i)
+# Waiting for 3f+1, then deleting & broadcasting, is much more performant than waiting for 2f+1, broadcasting, then checking to delete
 fullPrepare(slot, digest) :- numPrepares(slot, digest, c), fullQuorum(c)
+commitOut@r(slot, digest, i) :~ fullPrepare(slot, digest), pbftReplicas(r), id(i)
+
 pendingPrepares(slot, digest, sigp, i) :+ pendingPrepares(slot, digest, sigp, i), !fullPrepare(slot, digest)
-commitSent(slot, digest) :+ shouldSendCommit(slot, digest), !fullPrepare(slot, digest)
-commitSent(slot, digest) :+ commitSent(slot, digest), !fullPrepare(slot, digest)
 ######################## end commit
 
 ######################## reply
 commitLog(slot, digest, i) :- commitIn(slot, digest, i, sigi) # Note: sigi is not stored, because the commit log is not used during view-change so we don't need to prove to others that this is the message we got.
 pendingCommits(slot, digest, i) :- commitIn(slot, digest, i, sigi)
-numCommits(slot, digest, count(i)) :- pendingCommits(slot, digest, i), !replySent(slot, digest)
-shouldSendReply(slot, digest, command) :- numCommits(slot, digest, c), quorum(q), (c >= q), pendingPrePrepares(slot, digest, command), !replySent(slot, digest)
-clientOut@r(command, slot) :~ shouldSendReply(slot, _, command), replica(r)
-
+numCommits(slot, digest, count(i)) :- pendingCommits(slot, digest, i)
 fullCommit(slot, digest) :- numCommits(slot, digest, c), fullQuorum(c)
+clientOut@r(command, slot) :~ fullCommit(slot, digest), pendingPrePrepares(slot, digest, command), replica(r)
+
 pendingCommits(slot, digest, i) :+ pendingCommits(slot, digest, i), !fullCommit(slot, digest)
-replySent(slot, digest) :+ shouldSendReply(slot, digest, _), !fullCommit(slot, digest)
-replySent(slot, digest) :+ replySent(slot, digest), !fullCommit(slot, digest)
 ######################## end reply
     "#
     );
