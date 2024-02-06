@@ -12,6 +12,7 @@ use prost::Message;
 use std::{collections::HashMap, io::Cursor, rc::Rc};
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
+use chrono::Local;
 
 #[derive(clap::Args, Debug)]
 pub struct CommitterArgs {
@@ -24,7 +25,8 @@ pub struct CommitterArgs {
 }
 
 // TODO sign output to SMR?
-fn serialize(payload: Rc<Vec<u8>>, slot: u32, leader_id: u32) -> bytes::Bytes {
+fn serialize(payload: Rc<Vec<u8>>, slot: u32, leader_id: u32, client_requests: &prometheus::Counter) -> bytes::Bytes {
+    client_requests.inc();
     let command =
         multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload.as_ref())).unwrap();
 
@@ -36,7 +38,8 @@ fn serialize(payload: Rc<Vec<u8>>, slot: u32, leader_id: u32) -> bytes::Bytes {
             },
         )),
     };
-    // println!("Sending to replica {:?} payload {:?} slot {:?}", leader_id, payload[0], slot);
+    // let date = Local::now();
+    // println!("{} Sending to replica {:?} payload {:?} slot {:?}", date.format("[%b %d %H:%M:%S%.9f]"), leader_id, payload[0], slot);
 
     let mut buf = Vec::new();
     out.encode(&mut buf).unwrap();
@@ -64,6 +67,8 @@ fn unwrap_decoupled_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>
     if mac.verify_slice(sigp.as_slice()).is_err() {
         panic!("Decoupled PrePrepare leader signature {:?} was incorrect", sigp)
     }
+    // let date = Local::now();
+    // println!("{} Received prePrepare slot {:?} digest {:?}", date.format("[%b %d %H:%M:%S%.9f]"), slot, digest[0]);
     Some((slot, digest, command,))
 }
 
@@ -78,12 +83,15 @@ fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Op
         panic!("Commit signature {:?} from {:?} was incorrect", sigi, sender)
         // TODO: Change to return None after debugging, so another Byzantine replica can't crash this replica
     }
+    // let date = Local::now();
+    // println!("{} Received commit slot {:?} digest {:?} from sender {:?}", date.format("[%b %d %H:%M:%S%.9f]"), slot, digest[0], sender);
     // println!("Commit verified: {:?}", sigi[0]);
     Some((slot, digest, sender, sigi))
 }
 
 // Need to provide: clients, replicas, and smr (corresponding state machine replica)
 pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) {
+    let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
     let my_id = cfg.committer_index.unwrap();
     println!("Committer {:?} started", my_id);
 
@@ -126,7 +134,7 @@ pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) 
 
 # Reply (v = view, t = timestamp, c = client, i = id of self, r = result of execution, sig(i) = signature of (v,t,c,i,r)).
 # Simplified reply (o = command operation, n = slot). The difference in message content is because we're sending this to the state machine, not the client that sent the request.
-.async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot, leader_id))) -> dest_sink(replica_send)` `null::<(Rc<Vec<u8>>, u32,)>()`
+.async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot, leader_id, &client_requests))) -> dest_sink(replica_send)` `null::<(Rc<Vec<u8>>, u32,)>()`
 
 .async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>,)>()` `source_stream(preprepare_from_prepreparer_source) -> filter_map(|x| (unwrap_decoupled_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>,)>(x.unwrap().1).unwrap(), leader_id)))`
 
@@ -150,7 +158,8 @@ numCommits(slot, digest, count(i)) :- pendingCommits(slot, digest, i)
 fullCommit(slot, digest) :- numCommits(slot, digest, c), fullQuorum(c)
 clientOut@r(command, slot) :~ fullCommit(slot, digest), pendingPrePrepares(slot, digest, command), replica(r)
 
-pendingCommits(slot, digest, i) :+ pendingCommits(slot, digest, i), !fullCommit(slot, digest)
+sentClientOut(slot, digest) :- fullCommit(slot, digest), pendingPrePrepares(slot, digest, _)
+pendingCommits(slot, digest, i) :+ pendingCommits(slot, digest, i), !sentClientOut(slot, digest)
 ######################## end reply
     "#
     );

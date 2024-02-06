@@ -38,7 +38,7 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
     Hmac::<Sha256>::new_from_slice(&key.to_be_bytes()).unwrap()
 }
 
-fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)> {
+fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), receiver: u32, client_requests: &prometheus::Counter) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)> {
     let (slot, digest, sigp, command, sigc) = msg;
     // println!("Unwrapping prePrepare: (Slot: {:?}, {:?}, {:?}, {:?}, Receiver: {:?})", slot, digest[0], sigp[0], command[0], receiver);
     let mut mac = get_mac(0, receiver);
@@ -48,6 +48,7 @@ fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u
         panic!("PrePrepare leader signature {:?} was incorrect", sigp)
         // TODO: Change to return None after debugging, so a Byzantine primary can't crash the replica
     }
+    client_requests.inc();
     // println!("PrePrepare verified: {:?}", sigp[0]);
     // TODO: Verify the command signature sigc. Needs client to send authenticator instead of single sig?
     Some((slot, digest, sigp, command, sigc))
@@ -78,6 +79,7 @@ fn create_decoupled_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command: Rc<Vec<
 
 // Need to provide: clients, replicas, and smr (corresponding state machine replica)
 pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>) {
+    let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
     let my_id = cfg.prepreparer_index.unwrap();
     println!("Prepreparer {:?} started", my_id);
 
@@ -95,7 +97,7 @@ pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>
         .await
         .into_sink();
 
-       let pre_prepare_from_leader_source = ports
+    let pre_prepare_from_leader_source = ports
         .remove("receive_from$leaders$0")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
@@ -129,7 +131,7 @@ pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>
 
 # Pre-prepare (v = view, n = slot, d = hash digest of m, sig(p) = signature of (v,n,d), m = <o = command operation, t = timestamp, c = client>, sig(c) = signature of (o,t,c)).
 # Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_leader_source) -> filter_map(|x| (unwrap_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id)))`
+.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_leader_source) -> filter_map(|x| (unwrap_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id, &client_requests)))`
 
 # Prepare (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified prepare (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).

@@ -24,7 +24,7 @@ pub struct LeaderArgs {
 }
 
 // Output: Command, sigc, digest
-fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
+fn deserialize(msg: BytesMut, client_requests: &prometheus::Counter) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
     if msg.len() == 0 {
         return None;
     }
@@ -33,6 +33,7 @@ fn deserialize(msg: BytesMut) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
 
     match s.request.unwrap() {
         multipaxos_proto::leader_inbound::Request::ClientRequest(r) => {
+            client_requests.inc();
             let command = r.command.command.clone();
             let sigc = r.command.signature.clone().unwrap(); // TODO: Needs to safely handle None so Byzantine clients can't crash the PBFT replica
             let digest = r.command.digest.clone().unwrap();
@@ -103,6 +104,8 @@ fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc
 
 // Need to provide: clients, replicas, and smr (corresponding state machine replica)
 pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
+    let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
+
     let my_id = cfg.leader_index.unwrap();
     println!("Leader {:?} started, waiting for clients", my_id);
 
@@ -143,7 +146,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
 # Request (<o = command operation, t = timestamp, c = client>, sig(c) = signature of (o,t,c)).
 # Simplified request (<o = command operation>, sig(c) = signature of o, d = digest of o).
-.async clientIn `null::<(Rc<Vec<u8>>,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1)))`
+.async clientIn `null::<(Rc<Vec<u8>>,)>()` `source_stream(client_recv) -> filter_map(|x: Result<(u32, BytesMut,), _>| (deserialize(x.unwrap().1, &client_requests)))`
 
 .input startSlot `repeat_iter([(0 as u32,),])`
 .input nextSlot `null::<(u32,)>()`

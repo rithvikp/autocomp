@@ -128,7 +128,7 @@ def main(args) -> None:
                 'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
                 'num_leaders': input.num_pbft_replicas,
-                'num_preprepares_per_pbft_replica': input.num_prepreparers_per_pbft_replica,
+                'num_prepreparers_per_pbft_replica': input.num_prepreparers_per_pbft_replica,
                 'num_preparers_per_pbft_replica': input.num_preparers_per_pbft_replica,
                 'num_committers_per_pbft_replica': input.num_committers_per_pbft_replica,
                 'num_replicas': input.num_replicas,

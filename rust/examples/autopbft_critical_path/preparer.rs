@@ -63,6 +63,7 @@ fn create_commit(slot: u32, digest: Rc<Vec<u8>>, sender: u32, receiver: u32) -> 
 
 // Need to provide: clients, replicas, and smr (corresponding state machine replica)
 pub async fn run(cfg: PreparerArgs, mut ports: HashMap<String, ServerOrBound>) {
+    let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
     let my_id = cfg.preparer_index.unwrap();
     println!("Preparer {:?} started", my_id);
 
