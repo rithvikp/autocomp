@@ -201,9 +201,12 @@ message Command {
 
   required CommandId command_id = 1;
   required bytes command = 2;
-  // Signature and digest for PBFT
-  optional bytes signature = 3;
-  optional bytes digest = 4;
+  // Signature and digest for PBFT. Signature = MAC authenticator, 3f+1 if f=1
+  optional bytes signature0 = 3;
+  optional bytes signature1 = 4;
+  optional bytes signature2 = 5;
+  optional bytes signature3 = 6;
+  optional bytes digest = 7;
 }
 
 message CommandBatch {
@@ -307,6 +310,8 @@ message ClientReply {
   required CommandId command_id = 1;
   required int32 slot = 2;
   required bytes result = 3;
+  optional int32 replica_index = 4;
+  optional bytes signature = 5;
 }
 
 message ClientReplyBatch {

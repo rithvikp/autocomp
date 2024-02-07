@@ -24,17 +24,48 @@ pub struct CommitterArgs {
     committer_f: Option<u32>,
 }
 
-// TODO sign output to SMR?
-fn serialize(payload: Rc<Vec<u8>>, slot: u32, leader_id: u32, client_requests: &prometheus::Counter) -> bytes::Bytes {
+fn get_replica_key(my_id: u32) -> &'static [u8] {
+    match my_id {
+        0 => b"replica0",
+        1 => b"replica1",
+        2 => b"replica2",
+        3 => b"replica3",
+        _ => panic!("Invalid pbft_replica index {}", my_id),
+    }
+}
+
+// Will sign slot + digest with the replica key, the put the signature in signature0
+fn serialize(digest: Rc<Vec<u8>>, command_id_buf: Rc<Vec<u8>>, command: Rc<Vec<u8>>, slot: u32, leader_id: u32, client_requests: &prometheus::Counter) -> bytes::Bytes {
     client_requests.inc();
-    let command =
-        multipaxos_proto::CommandBatchOrNoop::decode(&mut Cursor::new(payload.as_ref())).unwrap();
+    let slot_i32 = i32::try_from(slot).unwrap();
+    let mut mac = Hmac::<Sha256>::new_from_slice(get_replica_key(leader_id)).unwrap();
+    mac.update(&slot_i32.to_be_bytes());
+    mac.update(digest.as_slice());
+    let sigp = mac.finalize().into_bytes();
+
+    let command_id = multipaxos_proto::CommandId::decode(&mut Cursor::new(command_id_buf.as_ref())).unwrap();
 
     let out = multipaxos_proto::ReplicaInbound {
         request: Some(multipaxos_proto::replica_inbound::Request::Chosen(
             multipaxos_proto::Chosen {
-                slot: i32::try_from(slot).unwrap(),
-                command_batch_or_noop: command,
+                slot: slot_i32,
+                command_batch_or_noop: multipaxos_proto::CommandBatchOrNoop {
+                    value: Some(
+                        multipaxos_proto::command_batch_or_noop::Value::CommandBatch(
+                            multipaxos_proto::CommandBatch {
+                                command: vec![multipaxos_proto::Command {
+                                    command_id: command_id,
+                                    command: command.to_vec(),
+                                    signature0: Some(sigp.to_vec()),
+                                    signature1: None,
+                                    signature2: None,
+                                    signature3: None,
+                                    digest: None,
+                                }],
+                            },
+                        ),
+                    ),
+                }
             },
         )),
     };
@@ -58,8 +89,8 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
 }
 
 // Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-fn unwrap_decoupled_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), leader_id: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>,)> {
-    let (slot, digest, command, sigp) = msg;
+fn unwrap_decoupled_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), leader_id: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>,)> {
+    let (slot, digest, command_id, command, sigp) = msg;
     // Both sender & receiver = leader_id, since this is a message sent between 2 decoupled components
     let mut mac = get_mac(leader_id, leader_id);
     mac.update(&slot.to_be_bytes());
@@ -69,7 +100,7 @@ fn unwrap_decoupled_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>
     }
     // let date = Local::now();
     // println!("{} Received prePrepare slot {:?} digest {:?}", date.format("[%b %d %H:%M:%S%.9f]"), slot, digest[0]);
-    Some((slot, digest, command,))
+    Some((slot, digest, command_id, command,))
 }
 
 fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
@@ -134,9 +165,9 @@ pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) 
 
 # Reply (v = view, t = timestamp, c = client, i = id of self, r = result of execution, sig(i) = signature of (v,t,c,i,r)).
 # Simplified reply (o = command operation, n = slot). The difference in message content is because we're sending this to the state machine, not the client that sent the request.
-.async clientOut `map(|(node_id, (payload, slot,))| (node_id, serialize(payload, slot, leader_id, &client_requests))) -> dest_sink(replica_send)` `null::<(Rc<Vec<u8>>, u32,)>()`
+.async clientOut `map(|(node_id, (digest, command_id, payload, slot,))| (node_id, serialize(digest, command_id, payload, slot, leader_id, &client_requests))) -> dest_sink(replica_send)` `null::<(Rc<Vec<u8>>, u32,)>()`
 
-.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>,)>()` `source_stream(preprepare_from_prepreparer_source) -> filter_map(|x| (unwrap_decoupled_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>,)>(x.unwrap().1).unwrap(), leader_id)))`
+.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>,)>()` `source_stream(preprepare_from_prepreparer_source) -> filter_map(|x| (unwrap_decoupled_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>,)>(x.unwrap().1).unwrap(), leader_id)))`
 
 # Commit (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified commit (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
@@ -147,8 +178,8 @@ pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) 
 .persist commitLog
 
 ######################## prepare
-pendingPrePrepares(slot, digest, command) :- prePrepareIn(slot, digest, command)
-pendingPrePrepares(slot, digest, command) :+ pendingPrePrepares(slot, digest, command), !fullCommit(slot, digest)
+pendingPrePrepares(slot, digest, commandID, command) :- prePrepareIn(slot, digest, commandID, command)
+pendingPrePrepares(slot, digest, commandID, command) :+ pendingPrePrepares(slot, digest, commandID, command), !fullCommit(slot, digest)
 ######################## end prepare
 
 ######################## reply
@@ -156,9 +187,9 @@ commitLog(slot, digest, i) :- commitIn(slot, digest, i, sigi) # Note: sigi is no
 pendingCommits(slot, digest, i) :- commitIn(slot, digest, i, sigi)
 numCommits(slot, digest, count(i)) :- pendingCommits(slot, digest, i)
 fullCommit(slot, digest) :- numCommits(slot, digest, c), fullQuorum(c)
-clientOut@r(command, slot) :~ fullCommit(slot, digest), pendingPrePrepares(slot, digest, command), replica(r)
+clientOut@r(digest, commandID, command, slot) :~ fullCommit(slot, digest), pendingPrePrepares(slot, digest, commandID, command), replica(r)
 
-sentClientOut(slot, digest) :- fullCommit(slot, digest), pendingPrePrepares(slot, digest, _)
+sentClientOut(slot, digest) :- fullCommit(slot, digest), pendingPrePrepares(slot, digest, _, _)
 pendingCommits(slot, digest, i) :+ pendingCommits(slot, digest, i), !sentClientOut(slot, digest)
 ######################## end reply
     "#

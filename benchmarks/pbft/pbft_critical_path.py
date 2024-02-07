@@ -46,7 +46,6 @@ class ClientOptions(NamedTuple):
     unsafe_read_at_i: bool = False
     flush_writes_every_n: int = 1
     flush_reads_every_n: int = 1
-    sign_messages: bool = True
 
 
 class ReplicaOptions(NamedTuple):
@@ -72,6 +71,7 @@ class Input(NamedTuple):
     num_replicas: int
     client_jvm_heap_size: str
     replica_jvm_heap_size: str
+    bft: bool
 
     # Benchmark parameters. ####################################################
     measurement_group_size: int
@@ -296,6 +296,8 @@ class DedalusPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                     str(input.replica_options.unsafe_dont_recover),
                     '--options.connectToLeader',
                     str(False),
+                    '--options.bft',
+                    f'{input.bft}',
                     '--receive_addrs',
                     ','.join([str(x) for x in receive_endpoints[i]]),
                 ],
@@ -432,8 +434,8 @@ class DedalusPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                     f'{input.client_options.flush_writes_every_n}',
                     '--options.flushReadsEveryN',
                     f'{input.client_options.flush_reads_every_n}',
-                    '--options.signMessages',
-                    f'{input.client_options.sign_messages}',
+                    '--options.bft',
+                    f'{input.bft}',
                     # This is needed because Scala clients don't usually setup channels with every
                     # pbft_replica, but dedalus requires that.
                     '--receive_addrs',

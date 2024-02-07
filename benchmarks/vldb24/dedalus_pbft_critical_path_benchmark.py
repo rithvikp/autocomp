@@ -89,9 +89,9 @@ def main(args) -> None:
                         unsafe_read_at_i = False,
                         flush_writes_every_n = 1,
                         flush_reads_every_n = 1,
-                        sign_messages = True, # Clients sign messages to PBFT replicas
                     ),
                     client_log_level = args.log_level,
+                    bft = True,
                 )
 
                 for value_size in [16]
@@ -122,7 +122,7 @@ def main(args) -> None:
                 'num_replicas': input.num_replicas,
                 'write.latency.median_ms': f'{output.write_output.latency.median_ms:.6}',
                 'write.start_throughput_1s.p90': f'{output.write_output.start_throughput_1s.p90:.8}',
-                'client.sign_messages': input.client_options.sign_messages,
+                'bft': input.bft,
             })
 
 

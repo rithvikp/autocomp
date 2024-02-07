@@ -24,55 +24,31 @@ pub struct LeaderArgs {
 }
 
 // Output: Command, sigc, digest
-fn deserialize(msg: BytesMut, client_requests: &prometheus::Counter) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<u8>>)> {
+fn deserialize(msg: BytesMut, client_requests: &prometheus::Counter) -> Option<(Rc<Vec<u8>>,Rc<Vec<u8>>,Rc<Vec<Vec<u8>>>,Rc<Vec<u8>>)> {
     if msg.len() == 0 {
         return None;
     }
     let s = multipaxos_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
+    client_requests.inc();
     // println!("Primary received {:?}", s);
 
     match s.request.unwrap() {
         multipaxos_proto::leader_inbound::Request::ClientRequest(r) => {
-            client_requests.inc();
+            let command_id = r.command.command_id.clone();
             let command = r.command.command.clone();
-            let sigc = r.command.signature.clone().unwrap(); // TODO: Needs to safely handle None so Byzantine clients can't crash the PBFT replica
+            // TODO: Needs to safely handle None so Byzantine clients can't crash the PBFT replica
+            let signatures = vec![
+                r.command.signature0.clone().unwrap(),
+                r.command.signature1.clone().unwrap(),
+                r.command.signature2.clone().unwrap(),
+                r.command.signature3.clone().unwrap(),
+            ];
             let digest = r.command.digest.clone().unwrap();
             // println!("Command {:?}, sigc {:?}, digest {:?}", command[0], sigc[0], digest[0]);
+            let mut command_id_buf = Vec::new();
+            command_id.encode(&mut command_id_buf).unwrap();
 
-            // Verify the digest is from the command
-            let mut hasher = Sha256::new();
-            hasher.update(command);
-            let result = hasher.finalize();
-            if &result[..] != digest {
-                panic!("Client digest {:?} didn't match expected digest {:?}", digest, result)
-                // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
-            }
-            // println!("Digest {:?} matched, checking sig", digest[0]);
-
-            // Verify the signature is signed over the digest
-            let client_key = b"clientPrimaryKey";
-            let mut mac = Hmac::<Sha256>::new_from_slice(client_key).unwrap();
-            mac.update(digest.as_slice());
-            if mac.verify_slice(sigc.as_slice()).is_err() {
-                panic!("Client signature {:?} was incorrect", sigc)
-                // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
-            }
-            // println!("Sig {:?} matched, creating output batch", sigc[0]);
-
-            // Create the output message ready to send to clients. Nested structure is too complex for us to take apart and pass around, so just pass this big blob
-            let out = multipaxos_proto::CommandBatchOrNoop {
-                value: Some(
-                    multipaxos_proto::command_batch_or_noop::Value::CommandBatch(
-                        multipaxos_proto::CommandBatch {
-                            command: vec![r.command],
-                        },
-                    ),
-                ),
-            };
-            let mut buf = Vec::new();
-            out.encode(&mut buf).unwrap();
-
-            Some((Rc::new(buf), Rc::new(sigc), Rc::new(digest),))
+            Some((Rc::new(command_id_buf), Rc::new(command), Rc::new(signatures), Rc::new(digest),))
         }
         _ => panic!("Unexpected message from the client"), // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
     }
@@ -91,7 +67,7 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
 }
 
 // Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc: Rc<Vec<u8>>, receiver: u32) -> (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>) {
+fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command_id: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc: Rc<Vec<Vec<u8>>>, receiver: u32) -> (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>) {
     // println!("Creating prePrepare: (Slot: {:?}, {:?}, {:?}, {:?}, Receiver: {:?})", slot, digest[0], command[0], sigc[0], receiver);
     // sender = 0 because only the leader (id = 0) sends prePrepares
     let mut mac = get_mac(0, receiver);
@@ -99,7 +75,7 @@ fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc
     mac.update(digest.as_slice());
     let sigp = mac.finalize().into_bytes();
     // println!("Signed prePrepare: {:?}", sigp[0]);
-    (slot, digest, Rc::new(sigp.to_vec()), command, sigc)
+    (slot, digest, Rc::new(sigp.to_vec()), command_id, command, sigc)
 }
 
 // Need to provide: clients, replicas, and smr (corresponding state machine replica)
@@ -150,11 +126,11 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
 .input startSlot `repeat_iter([(0 as u32,),])`
 .input nextSlot `null::<(u32,)>()`
-.input SlottedPayloads `null::<(Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, u32,)>()`
+.input SlottedPayloads `null::<(Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>, Rc<Vec<u8>>, u32,)>()`
 
 # Pre-prepare (v = view, n = slot, d = hash digest of m, sig(p) = signature of (v,n,d), m = <o = command operation, t = timestamp, c = client>, sig(c) = signature of (o,t,c)).
-# Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-.async prePrepareOut `map(|(node_id, (slot, digest, command, sigc)):(u32, (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>,))| (node_id, serialize_to_bytes(create_pre_prepare(slot, digest, command, sigc, node_id)))) -> dest_sink(pre_prepare_to_prepreparer_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
+# Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <command_id, o = command operation>, sig(c) = signature of o).
+.async prePrepareOut `map(|(node_id, (slot, digest, command_id, command, sigc))| (node_id, serialize_to_bytes(create_pre_prepare(slot, digest, command_id, command, sigc, node_id)))) -> dest_sink(pre_prepare_to_prepreparer_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
 
 ######################## end relation definitions
 
@@ -163,12 +139,12 @@ slots(s) :- startSlot(s)
 nextSlot(max(s)) :- slots(s)
 
 ######################## pre-prepare
-IndexedPayloads(command, sigc, digest, index()) :- clientIn(command, sigc, digest), IsLeader()
-SlottedPayloads(command, sigc, digest, (slot + offset)) :- IndexedPayloads(command, sigc, digest, offset), nextSlot(slot)
-prePrepareOut@(r+(slot%n))(slot, digest, command, sigc) :~ SlottedPayloads(command, sigc, digest, slot), prepreparerStartIDs(r), numPrepreparerPartitions(n)
+IndexedPayloads(commandID, command, sigc, digest, index()) :- clientIn(commandID, command, sigc, digest), IsLeader()
+SlottedPayloads(commandID, command, sigc, digest, (slot + offset)) :- IndexedPayloads(commandID, command, sigc, digest, offset), nextSlot(slot)
+prePrepareOut@(r+(slot%n))(slot, digest, commandID, command, sigc) :~ SlottedPayloads(commandID, command, sigc, digest, slot), prepreparerStartIDs(r), numPrepreparerPartitions(n)
 
 # Increment slot
-NumPayloads(max(offset)) :- IndexedPayloads(_, _, _, offset)
+NumPayloads(max(offset)) :- IndexedPayloads(_, _, _, _, offset)
 slots(s) :+ nextSlot(s), !NumPayloads(n)
 slots(s + num + 1) :+ nextSlot(s), NumPayloads(num)
 ######################## end pre-prepare

@@ -27,6 +27,16 @@ pub struct PrepreparerArgs {
     prepreparer_num_committer_partitions: Option<u32>,
 }
 
+fn get_client_key(my_id: u32) -> &'static [u8] {
+    match my_id {
+        0 => b"client0",
+        1 => b"client1",
+        2 => b"client2",
+        3 => b"client3",
+        _ => panic!("Invalid pbft_replica index {}", my_id),
+    }
+}
+
 fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
     // Key scheme: If replica 1 is writing to replica 2, then the key is b"12". Lowest id first, so replica 2 writing to replica 1 uses the same key.
     let key;
@@ -38,20 +48,39 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
     Hmac::<Sha256>::new_from_slice(&key.to_be_bytes()).unwrap()
 }
 
-fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), receiver: u32, client_requests: &prometheus::Counter) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)> {
-    let (slot, digest, sigp, command, sigc) = msg;
+fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>)> {
+    let (slot, digest, sigp, command_id, command, sigc) = msg;
     // println!("Unwrapping prePrepare: (Slot: {:?}, {:?}, {:?}, {:?}, Receiver: {:?})", slot, digest[0], sigp[0], command[0], receiver);
-    let mut mac = get_mac(0, receiver);
-    mac.update(&slot.to_be_bytes());
-    mac.update(digest.as_slice());
-    if mac.verify_slice(sigp.as_slice()).is_err() {
+
+    // Verify the pre-prepare signature. Note: sender = 0 because only the leader (id = 0) sends pre-prepares
+    let mut preprepare_mac = get_mac(0, receiver);
+    preprepare_mac.update(&slot.to_be_bytes());
+    preprepare_mac.update(digest.as_slice());
+    if preprepare_mac.verify_slice(sigp.as_slice()).is_err() {
         panic!("PrePrepare leader signature {:?} was incorrect", sigp)
         // TODO: Change to return None after debugging, so a Byzantine primary can't crash the replica
     }
-    client_requests.inc();
     // println!("PrePrepare verified: {:?}", sigp[0]);
-    // TODO: Verify the command signature sigc. Needs client to send authenticator instead of single sig?
-    Some((slot, digest, sigp, command, sigc))
+
+    // Verify the digest is from the command
+    let mut hasher = Sha256::new();
+    hasher.update(command.as_slice());
+    let result = hasher.finalize().to_vec();
+    if result != digest.as_slice() {
+        panic!("Client digest {:?} didn't match expected digest {:?}", digest, result)
+        // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
+    }
+    // println!("Digest {:?} matched, checking sig", digest[0]);
+
+    // Verify the signature is signed over the digest
+    let mut client_mac = Hmac::<Sha256>::new_from_slice(get_client_key(receiver)).unwrap();
+    client_mac.update(digest.as_slice());
+    if client_mac.verify_slice(sigc[receiver as usize].as_slice()).is_err() {
+        panic!("Client signature {:?} was incorrect", sigc[receiver as usize])
+        // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
+    }
+    // println!("Sig {:?} matched", sigc[receiver as usize]);
+    Some((slot, digest, sigp, command_id, command, sigc))
 }
 
 // Simplified prepare (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
@@ -66,15 +95,15 @@ fn create_prepare(slot: u32, digest: Rc<Vec<u8>>, sender: u32, receiver: u32) ->
     (slot, digest, sender, Rc::new(sigi.to_vec()))
 }
 
-// Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-fn create_decoupled_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command: Rc<Vec<u8>>, leader_id: u32) -> (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>) {
+// Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <command_id, o = command operation>, sig(c) = signature of o).
+fn create_decoupled_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command_id: Rc<Vec<u8>>, command: Rc<Vec<u8>>, leader_id: u32) -> (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>) {
     // Both sender & receiver = leader_id, since this is a message sent between 2 decoupled components
     let mut mac = get_mac(leader_id, leader_id);
     mac.update(&slot.to_be_bytes());
     mac.update(digest.as_slice());
     let sigp = mac.finalize().into_bytes();
     // println!("Signed prePrepare: {:?}", sigp[0]);
-    (slot, digest, command, Rc::new(sigp.to_vec()))
+    (slot, digest, command_id, command, Rc::new(sigp.to_vec()))
 }
 
 // Need to provide: clients, replicas, and smr (corresponding state machine replica)
@@ -130,26 +159,26 @@ pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>
 # IDB
 
 # Pre-prepare (v = view, n = slot, d = hash digest of m, sig(p) = signature of (v,n,d), m = <o = command operation, t = timestamp, c = client>, sig(c) = signature of (o,t,c)).
-# Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_leader_source) -> filter_map(|x| (unwrap_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id, &client_requests)))`
+# Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <command_id, o = command operation>, sig(c) = signature of o).
+.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_leader_source) -> filter_map(|x| (unwrap_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>)>(x.unwrap().1).unwrap(), my_id)))`
 
 # Prepare (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified prepare (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
 .async prepareOut `map(|(node_id, (slot, digest, i))| (node_id, serialize_to_bytes(create_prepare(slot, digest, i, node_id)))) -> dest_sink(prepare_to_preparer_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
 
 # Decoupled pre-prepare to committer (n, d, m, sig)
-.async prePrepareCommitterOut `map(|(node_id, (slot, digest, command))| (node_id, serialize_to_bytes(create_decoupled_pre_prepare(slot, digest, command, leader_id)))) -> dest_sink(preprepare_to_committer_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
+.async prePrepareCommitterOut `map(|(node_id, (slot, digest, command_id, command))| (node_id, serialize_to_bytes(create_decoupled_pre_prepare(slot, digest, command_id, command, leader_id)))) -> dest_sink(preprepare_to_committer_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
 
-.input prePrepareLog `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()`
+.input prePrepareLog `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>)>()`
 
 ######################## end relation definitions
 
 .persist prePrepareLog
 
 ######################## prepare
-prePrepareLog(slot, digest, sigp, command, sigc) :- prePrepareIn(slot, digest, sigp, command, sigc)
-prepareOut@(r+(slot%n))(slot, digest, i) :~ prePrepareIn(slot, digest, sigp, command, sigc), id(i), preparerStartIDs(r), numPreparerPartitions(n)
-prePrepareCommitterOut@(r+(slot%n))(slot, digest, command) :~ prePrepareIn(slot, digest, _, command, _), committersStartID(r), numCommitterPartitions(n)
+prePrepareLog(slot, digest, sigp, commandID, command, sigc) :- prePrepareIn(slot, digest, sigp, commandID, command, sigc)
+prepareOut@(r+(slot%n))(slot, digest, i) :~ prePrepareIn(slot, digest, sigp, commandID, command, sigc), id(i), preparerStartIDs(r), numPreparerPartitions(n)
+prePrepareCommitterOut@(r+(slot%n))(slot, digest, commandID, command) :~ prePrepareIn(slot, digest, _, commandID, command, _), committersStartID(r), numCommitterPartitions(n)
 ######################## end prepare
     "#
     );

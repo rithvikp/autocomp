@@ -58,8 +58,8 @@ case class ClientOptions(
     flushWritesEveryN: Int,
     flushReadsEveryN: Int,
     measureLatencies: Boolean,
-    // True if the client appends the digest and signature of the digest to commands
-    signMessages: Boolean
+    // True if the client needs to create digests, sign it, and wait for f+1 replicas (with signed messages) to confirm
+    bft: Boolean
 )
 
 @JSExportAll
@@ -75,7 +75,7 @@ object ClientOptions {
     flushWritesEveryN = 1,
     flushReadsEveryN = 1,
     measureLatencies = true,
-    signMessages = false
+    bft = false
   )
 }
 
@@ -187,6 +187,15 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       result: Promise[Array[Byte]],
       resendClientRequest: Transport#Timer
   ) extends State
+
+  // @JSExportAll
+  // case class PendingPBFTWrite(
+  //     id: Id,
+  //     command: Array[Byte],
+  //     result: Promise[Array[Byte]],
+  //     replies: mutable.Map[Int, ClientReply],
+  //     resendClientRequest: Transport#Timer
+  // ) extends State
 
   @JSExportAll
   case class MaxSlot(
@@ -578,12 +587,13 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     MessageDigest.getInstance("SHA-256").digest(command)
   }
 
-  // Sign. Make sure the key is sync'd with the primary in PBFT
+  // Sign. Key for each PBFT replica = client<replicaID>
   private def sign(
-      digest: Array[Byte]
+      digest: Array[Byte],
+      replicaID: Int
   ): Array[Byte] = {
-    val macKey = "clientPrimaryKey" 
     val mac = Mac.getInstance("hmacSHA256")
+    val macKey = s"client$replicaID"
     mac.init(new SecretKeySpec(macKey.getBytes, "hmacSHA256"))
     mac.doFinal(digest)
   }
@@ -608,15 +618,28 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
         // Send the command.
         val id = ids.getOrElse(pseudonym, 0)
         val digest = createDigest(command)
-        val clientRequest = ClientRequest(
-          command = Command(
+        var command_proto = if (options.bft) {
+          Command(
             commandId = CommandId(clientAddress = addressAsBytes,
                                   clientPseudonym = pseudonym,
                                   clientId = id),
             command = ByteString.copyFrom(command),
-            signature = Some(ByteString.copyFrom(sign(digest))),
+            signature0 = Some(ByteString.copyFrom(sign(digest, 0))),
+            signature1 = Some(ByteString.copyFrom(sign(digest, 1))),
+            signature2 = Some(ByteString.copyFrom(sign(digest, 2))),
+            signature3 = Some(ByteString.copyFrom(sign(digest, 3))),
             digest = Some(ByteString.copyFrom(digest))
           )
+        } else {
+          Command(
+            commandId = CommandId(clientAddress = addressAsBytes,
+                                  clientPseudonym = pseudonym,
+                                  clientId = id),
+            command = ByteString.copyFrom(command)
+          )
+        }
+        val clientRequest = ClientRequest(
+          command = command_proto
         )
         sendClientRequest(clientRequest, forceFlush = false)
 
