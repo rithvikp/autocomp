@@ -535,9 +535,9 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                     '--options.signMessages',
                     f'{input.client_options.sign_messages}',
                     # This is needed because Scala clients don't usually setup channels with every
-                    # committer, but dedalus requires that.
+                    # leader, but dedalus requires that.
                     '--receive_addrs',
-                    ','.join([x.host.ip()+":"+str(x.port) for x in net.placement(index=i).committers]),
+                    ','.join([x.host.ip()+":"+str(x.port) for x in net.placement(index=i).leaders]),
                 ])
             if input.profiled:
                 p = perf_util.JavaPerfProc(bench, client.host, p, f'client_{i}')

@@ -14,7 +14,7 @@ def main(args) -> None:
                 '1': {
                     'leaders': 2,
                     'replicas': 4, # Max across any benchmark
-                    'clients': 10, # Max across any benchmark
+                    'clients': 4, # Max across any benchmark
                     'acceptors': 3, # Max across any benchmark
                 },
             }
