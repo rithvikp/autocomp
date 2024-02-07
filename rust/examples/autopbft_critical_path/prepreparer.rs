@@ -21,6 +21,8 @@ pub struct PrepreparerArgs {
     prepreparer_leader_index: Option<u32>,
     #[clap(long = "prepreparer.f")]
     prepreparer_f: Option<u32>,
+    #[clap(long = "prepreparer.num-prepreparer-partitions")]
+    prepreparer_num_prepreparer_partitions: Option<u32>,
     #[clap(long = "prepreparer.num-preparer-partitions")]
     prepreparer_num_preparer_partitions: Option<u32>,
     #[clap(long = "prepreparer.num-committer-partitions")]
@@ -48,7 +50,7 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
     Hmac::<Sha256>::new_from_slice(&key.to_be_bytes()).unwrap()
 }
 
-fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>)> {
+fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>), receiver: u32, leader_id: u32, num_prepreparer_partitions: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>)> {
     let (slot, digest, sigp, command_id, command, sigc) = msg;
     // println!("Unwrapping prePrepare: (Slot: {:?}, {:?}, {:?}, {:?}, Receiver: {:?})", slot, digest[0], sigp[0], command[0], receiver);
 
@@ -73,13 +75,20 @@ fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u
     // println!("Digest {:?} matched, checking sig", digest[0]);
 
     // Verify the signature is signed over the digest
-    let mut client_mac = Hmac::<Sha256>::new_from_slice(get_client_key(receiver)).unwrap();
+    let mut client_mac = Hmac::<Sha256>::new_from_slice(get_client_key(leader_id)).unwrap();
     client_mac.update(digest.as_slice());
-    if client_mac.verify_slice(sigc[receiver as usize].as_slice()).is_err() {
-        panic!("Client signature {:?} was incorrect", sigc[receiver as usize])
+    if client_mac.verify_slice(sigc[leader_id as usize].as_slice()).is_err() {
+        panic!("Client signature {:?} was incorrect", sigc[leader_id as usize])
         // TODO: Change to return None after debugging, so Byzantine clients can't crash the PBFT replica
     }
     // println!("Sig {:?} matched", sigc[receiver as usize]);
+
+    // Message verification (partitioning invariant is preserved)
+    if (slot % num_prepreparer_partitions) != (receiver % num_prepreparer_partitions) {
+        println!("PrePrepare slot {:?} was incorrectly sent to partition {:?}", slot, receiver);
+        return None
+    }
+
     Some((slot, digest, sigp, command_id, command, sigc))
 }
 
@@ -136,8 +145,9 @@ pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>
     let leader_id = cfg.prepreparer_leader_index.unwrap();
     let f = cfg.prepreparer_f.unwrap();
 
+    let num_prepreparer_partitions = cfg.prepreparer_num_prepreparer_partitions.unwrap();
     let num_preparer_partitions = cfg.prepreparer_num_preparer_partitions.unwrap();
-    let preparer_start_ids: Vec<u32> = (0u32..u32::try_from(3*f+1).unwrap())
+    let preparer_start_ids: Vec<u32> = (0u32..((3*f+1) * num_preparer_partitions))
         .step_by(num_preparer_partitions.try_into().unwrap())
         .collect();
     // Carefully calculate our OWN committer's ID (sending a PrePrepare along for monotonic decoupling)
@@ -160,7 +170,7 @@ pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>
 
 # Pre-prepare (v = view, n = slot, d = hash digest of m, sig(p) = signature of (v,n,d), m = <o = command operation, t = timestamp, c = client>, sig(c) = signature of (o,t,c)).
 # Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <command_id, o = command operation>, sig(c) = signature of o).
-.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_leader_source) -> filter_map(|x| (unwrap_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>)>(x.unwrap().1).unwrap(), my_id)))`
+.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_leader_source) -> filter_map(|x| (unwrap_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>)>(x.unwrap().1).unwrap(), my_id, leader_id, num_prepreparer_partitions)))`
 
 # Prepare (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified prepare (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).

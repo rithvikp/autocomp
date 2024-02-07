@@ -78,6 +78,7 @@ class Input(NamedTuple):
 
     # Benchmark parameters. ####################################################
     measurement_group_size: int
+    start_lag: datetime.timedelta
     warmup_duration: datetime.timedelta
     warmup_timeout: datetime.timedelta
     warmup_sleep: datetime.timedelta
@@ -114,9 +115,10 @@ Output = AutoPBFTCriticalPathOutput
 
 # Networks #####################################################################
 class AutoPBFTCriticalPathNet:
-    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider]):
+    def __init__(self, inp: Input, endpoints: Dict[str, provision.EndpointProvider], run_index: int):
         self._input = inp
         self._endpoints = endpoints
+        self._run_index = run_index
     
     def update(self, endpoints: Dict[str, provision.EndpointProvider]) -> None:
         self._endpoints = endpoints
@@ -130,7 +132,9 @@ class AutoPBFTCriticalPathNet:
         replicas: List[host.Endpoint]
 
     def prom_placement(self) -> Placement:
-        ports = itertools.count(40001, 100)
+        # Increased start port from 40001.
+        # Inspecting config.pbtxt in the output files reveals that nodes are being launched in the 40000s of ports, which can conflict with prometheus.
+        ports = itertools.count(60001+self._run_index, 100)
 
         def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
@@ -215,11 +219,20 @@ class AutoPBFTCriticalPathNet:
 
 # Suite ########################################################################
 class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
+    def __init__(self):
+        self.run_index = 0
+        super().__init__()
+
     def run_benchmark(self,
                       bench: benchmark.BenchmarkDirectory,
                       args: Dict[Any, Any],
                       input: Input) -> Output:
-        net = AutoPBFTCriticalPathNet(input, self.provisioner.hosts(input.f))
+        net = AutoPBFTCriticalPathNet(input, self.provisioner.hosts(input.f), self.run_index)
+        self.run_index += 1
+
+        # Pre-benchmark lag.
+        time.sleep(input.start_lag.total_seconds())
+        bench.log('Pre-benchmark lag ended.')
 
         # Launch PBFT nodes
         if self.service_type("leaders") == "hydroflow" and self.service_type("prepreparers") == "hydroflow" and self.service_type("preparers") == "hydroflow" and self.service_type("committers") == "hydroflow":
@@ -236,6 +249,8 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                         str(i),
                         '--committer.f',
                         str(input.f),
+                        '--committer.num-committer-partitions',
+                        str(input.num_committers_per_pbft_replica),
                         '--prometheus-host',
                         committer.host.ip(),
                         '--prometheus-port',
@@ -251,6 +266,8 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                     str(i),
                     '--preparer.f',
                     str(input.f),
+                    '--preparer.num-preparer-partitions',
+                    str(input.num_preparers_per_pbft_replica),
                     '--preparer.num-committer-partitions',
                     str(input.num_committers_per_pbft_replica),
                     '--prometheus-host',
@@ -272,6 +289,8 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                         str(i),
                         '--prepreparer.f',
                         str(input.f),
+                        '--prepreparer.num-prepreparer-partitions',
+                        str(input.num_prepreparers_per_pbft_replica),
                         '--prepreparer.num-preparer-partitions',
                         str(input.num_preparers_per_pbft_replica),
                         '--prepreparer.num-committer-partitions',

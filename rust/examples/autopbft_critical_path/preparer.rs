@@ -19,6 +19,8 @@ pub struct PreparerArgs {
     preparer_index: Option<u32>,
     #[clap(long = "preparer.f")]
     preparer_f: Option<u32>,
+    #[clap(long = "preparer.num-preparer-partitions")]
+    preparer_num_preparer_partitions: Option<u32>,
     #[clap(long = "preparer.num-committer-partitions")]
     preparer_num_committer_partitions: Option<u32>,
 }
@@ -34,7 +36,7 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
     Hmac::<Sha256>::new_from_slice(&key.to_be_bytes()).unwrap()
 }
 
-fn unwrap_prepare(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
+fn unwrap_prepare(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32, num_preparer_partitions: u32) -> Option<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
     let (slot, digest, sender, sigi) = msg;
     // println!("Unwrapping prepare: (Slot: {:?}, {:?}, Sender: {:?}, {:?})", slot, digest[0], sender, sigi[0]);
     let mut mac = get_mac(sender, receiver);
@@ -46,6 +48,13 @@ fn unwrap_prepare(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> O
         // TODO: Change to return None after debugging, so another Byzantine replica can't crash this replica
     }
     // println!("Prepare verified: {:?}", sigi[0]);
+
+    // Message verification (partitioning invariant is preserved)
+    if (slot % num_preparer_partitions) != (receiver % num_preparer_partitions) {
+        println!("Prepare slot {:?} was incorrectly sent to partition {:?}", slot, receiver);
+        return None
+    }
+
     Some((slot, digest, sender, sigi))
 }
 
@@ -83,8 +92,9 @@ pub async fn run(cfg: PreparerArgs, mut ports: HashMap<String, ServerOrBound>) {
 
     let f = cfg.preparer_f.unwrap();
 
+    let num_preparer_partitions = cfg.preparer_num_preparer_partitions.unwrap();
     let num_committer_partitions = cfg.preparer_num_committer_partitions.unwrap();
-    let committer_start_ids: Vec<u32> = (0u32..u32::try_from(3*f+1).unwrap())
+    let committer_start_ids: Vec<u32> = (0u32..((3*f+1) * num_committer_partitions))
         .step_by(num_committer_partitions.try_into().unwrap())
         .collect();
 
@@ -103,7 +113,7 @@ pub async fn run(cfg: PreparerArgs, mut ports: HashMap<String, ServerOrBound>) {
 
 # Prepare (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified prepare (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
-.async prepareIn `null::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>()` `source_stream(prepare_from_prepreparer_source) -> filter_map(|x| (unwrap_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id)))`
+.async prepareIn `null::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>()` `source_stream(prepare_from_prepreparer_source) -> filter_map(|x| (unwrap_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id, num_preparer_partitions)))`
 
 # Commit (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified commit (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).

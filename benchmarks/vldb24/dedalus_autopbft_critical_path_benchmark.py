@@ -15,9 +15,9 @@ def main(args) -> None:
                     'replicas': 4, # Max across any benchmark
                     'clients': 1,
                     'leaders': 4,
-                    'prepreparers': 4*1,
-                    'preparers': 4*1,
-                    'committers': 4*1,
+                    'prepreparers': 4*2,
+                    'preparers': 4*2,
+                    'committers': 4*2,
                 },
             }
 
@@ -37,6 +37,7 @@ def main(args) -> None:
                     client_jvm_heap_size = '8g',
                     replica_jvm_heap_size = '12g',
                     measurement_group_size = 10,
+                    start_lag = datetime.timedelta(seconds=0),
                     warmup_duration = datetime.timedelta(seconds=25),
                     warmup_timeout = datetime.timedelta(seconds=30),
                     warmup_sleep = datetime.timedelta(seconds=5),
@@ -101,9 +102,9 @@ def main(args) -> None:
                 )
 
                 for value_size in [16]
-                for num_prepreparers_per_pbft_replica in [1]
-                for num_preparers_per_pbft_replica in [1]
-                for num_committers_per_pbft_replica in [1]
+                for num_prepreparers_per_pbft_replica in [2]
+                for num_preparers_per_pbft_replica in [2]
+                for num_committers_per_pbft_replica in [2]
                 for num_replicas in [4]
                 for (num_client_procs, num_clients_per_proc) in [
                     (1, 1),

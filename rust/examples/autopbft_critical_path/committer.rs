@@ -22,6 +22,8 @@ pub struct CommitterArgs {
     committer_leader_index: Option<u32>,
     #[clap(long = "committer.f")]
     committer_f: Option<u32>,
+    #[clap(long = "committer.num-committer-partitions")]
+    committer_num_committer_partitions: Option<u32>,
 }
 
 fn get_replica_key(my_id: u32) -> &'static [u8] {
@@ -70,7 +72,7 @@ fn serialize(digest: Rc<Vec<u8>>, command_id_buf: Rc<Vec<u8>>, command: Rc<Vec<u
         )),
     };
     // let date = Local::now();
-    // println!("{} Sending to replica {:?} payload {:?} slot {:?}", date.format("[%b %d %H:%M:%S%.9f]"), leader_id, payload[0], slot);
+    // println!("{} Sending to replica {:?} command {:?} slot {:?}", date.format("[%b %d %H:%M:%S%.9f]"), leader_id, command[0], slot);
 
     let mut buf = Vec::new();
     out.encode(&mut buf).unwrap();
@@ -89,7 +91,7 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
 }
 
 // Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-fn unwrap_decoupled_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), leader_id: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>,)> {
+fn unwrap_decoupled_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>), my_id: u32, leader_id: u32, num_committer_partitions: u32) -> Option<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>,)> {
     let (slot, digest, command_id, command, sigp) = msg;
     // Both sender & receiver = leader_id, since this is a message sent between 2 decoupled components
     let mut mac = get_mac(leader_id, leader_id);
@@ -100,10 +102,17 @@ fn unwrap_decoupled_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>
     }
     // let date = Local::now();
     // println!("{} Received prePrepare slot {:?} digest {:?}", date.format("[%b %d %H:%M:%S%.9f]"), slot, digest[0]);
+    
+    // Message verification (partitioning invariant is preserved)
+    if (slot % num_committer_partitions) != (my_id % num_committer_partitions) {
+        println!("Commit slot {:?} was incorrectly sent to partition {:?}", slot, my_id);
+        return None
+    }
+
     Some((slot, digest, command_id, command,))
 }
 
-fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
+fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32, num_committer_partitions: u32) -> Option<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
     let (slot, digest, sender, sigi) = msg;
     // println!("Unwrapping commit: (Slot: {:?}, {:?}, Sender: {:?}, {:?})", slot, digest[0], sender, sigi[0]);
     let mut mac = get_mac(sender, receiver);
@@ -117,6 +126,13 @@ fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Op
     // let date = Local::now();
     // println!("{} Received commit slot {:?} digest {:?} from sender {:?}", date.format("[%b %d %H:%M:%S%.9f]"), slot, digest[0], sender);
     // println!("Commit verified: {:?}", sigi[0]);
+
+    // Message verification (partitioning invariant is preserved)
+    if (slot % num_committer_partitions) != (receiver % num_committer_partitions) {
+        println!("Commit slot {:?} was incorrectly sent to partition {:?}", slot, receiver);
+        return None
+    }
+
     Some((slot, digest, sender, sigi))
 }
 
@@ -149,6 +165,7 @@ pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) 
 
     let leader_id = cfg.committer_leader_index.unwrap();
     let f = cfg.committer_f.unwrap();
+    let num_committer_partitions = cfg.committer_num_committer_partitions.unwrap();
 
     println!("Committer {:?} ready", my_id);
 
@@ -167,11 +184,11 @@ pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) 
 # Simplified reply (o = command operation, n = slot). The difference in message content is because we're sending this to the state machine, not the client that sent the request.
 .async clientOut `map(|(node_id, (digest, command_id, payload, slot,))| (node_id, serialize(digest, command_id, payload, slot, leader_id, &client_requests))) -> dest_sink(replica_send)` `null::<(Rc<Vec<u8>>, u32,)>()`
 
-.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>,)>()` `source_stream(preprepare_from_prepreparer_source) -> filter_map(|x| (unwrap_decoupled_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>,)>(x.unwrap().1).unwrap(), leader_id)))`
+.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>,)>()` `source_stream(preprepare_from_prepreparer_source) -> filter_map(|x| (unwrap_decoupled_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>,)>(x.unwrap().1).unwrap(), my_id, leader_id, num_committer_partitions)))`
 
 # Commit (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified commit (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).
-.async commitIn `null::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>()` `source_stream(commit_from_preparer_source) -> filter_map(|x| (unwrap_commit(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id)))`
+.async commitIn `null::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>()` `source_stream(commit_from_preparer_source) -> filter_map(|x| (unwrap_commit(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)>(x.unwrap().1).unwrap(), my_id, num_committer_partitions)))`
 
 ######################## end relation definitions
 

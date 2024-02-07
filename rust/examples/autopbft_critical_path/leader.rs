@@ -103,7 +103,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
     let f = cfg.leader_f.unwrap();
     let num_prepreparer_partitions = cfg.leader_num_prepreparer_partitions.unwrap();
-    let prepreparer_start_ids: Vec<u32> = (0u32..u32::try_from(3*f+1).unwrap())
+    let prepreparer_start_ids: Vec<u32> = (0u32..((3*f+1) * num_prepreparer_partitions))
         .step_by(num_prepreparer_partitions.try_into().unwrap())
         .collect();
 
