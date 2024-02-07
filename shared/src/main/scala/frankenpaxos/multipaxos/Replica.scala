@@ -330,6 +330,17 @@ class Replica[Transport <: frankenpaxos.Transport[Transport]](
     mac.doFinal(digest).sameElements(signature)
   }
 
+  private def signToClient(
+      slot: Int,
+      result: ByteString
+  ): Array[Byte] = {
+    val mac = Mac.getInstance("hmacSHA256")
+    val macKey = s"clientReplica$index"
+    mac.init(new SecretKeySpec(macKey.getBytes, "hmacSHA256"))
+    mac.update(ByteBuffer.allocate(Integer.BYTES).order(ByteOrder.BIG_ENDIAN).putInt(slot).array())
+    mac.doFinal(result.toByteArray())
+  }
+
   // `executeCommand(slot, command, clientReplies)` attempts to execute the
   // command `command` in slot `slot`. Attempting to execute `command` may or
   // may not produce a corresponding ClientReply. If the command is stale, it
@@ -349,8 +360,8 @@ class Replica[Transport <: frankenpaxos.Transport[Transport]](
     val commandByteArray = command.command.toByteArray()
     val clientIdentity = (commandId.clientAddress, commandId.clientPseudonym)
 
-    // Verify signature
     if (options.bft) {
+      // Verify signature
       val digest = createDigest(commandByteArray)
       val signature = command.signature0 match {
         case Some(sig) => sig.toByteArray()
@@ -363,39 +374,76 @@ class Replica[Transport <: frankenpaxos.Transport[Transport]](
         logger.debug(s"Replica ${index} received command ${commandByteArray} at slot ${slot} with invalid signature ${signature}")
         return
       }
-    }
 
-    clientTable.get(clientIdentity) match {
-      case None =>
-        val result =
-          ByteString.copyFrom(stateMachine.run(commandByteArray))
-        clientTable(clientIdentity) = (commandId.clientId, result)
-        if (slot % config.numReplicas == index) {
+      // Execute. Difference from CFT: All replicas reply to the client and include their own signature.
+      clientTable.get(clientIdentity) match {
+        case None =>
+          val result =
+            ByteString.copyFrom(stateMachine.run(commandByteArray))
+          clientTable(clientIdentity) = (commandId.clientId, result)
           clientReplies += ClientReply(commandId = commandId,
-                                       slot = slot,
-                                       result = result)
-        }
-        metrics.executedCommandsTotal.inc()
+                                        slot = slot,
+                                        result = result,
+                                        replicaIndex = Some(index),
+                                        signature = Some(ByteString.copyFrom(signToClient(slot, result))))
+          metrics.executedCommandsTotal.inc()
 
-      case Some((largestClientId, cachedResult)) =>
-        if (commandId.clientId < largestClientId) {
-          metrics.reduntantlyExecutedCommandsTotal.inc()
-        } else if (commandId.clientId == largestClientId) {
-          clientReplies += ClientReply(commandId = commandId,
-                                       slot = slot,
-                                       result = cachedResult)
-          metrics.reduntantlyExecutedCommandsTotal.inc()
-        } else {
+        case Some((largestClientId, cachedResult)) =>
+          if (commandId.clientId < largestClientId) {
+            metrics.reduntantlyExecutedCommandsTotal.inc()
+          } else if (commandId.clientId == largestClientId) {
+            clientReplies += ClientReply(commandId = commandId,
+                                        slot = slot,
+                                        result = cachedResult,
+                                        replicaIndex = Some(index),
+                                        signature = Some(ByteString.copyFrom(signToClient(slot, cachedResult))))
+            metrics.reduntantlyExecutedCommandsTotal.inc()
+          } else {
+            val result =
+              ByteString.copyFrom(stateMachine.run(commandByteArray))
+            clientTable(clientIdentity) = (commandId.clientId, result)
+            clientReplies += ClientReply(commandId = commandId,
+                                          slot = slot,
+                                          result = result,
+                                          replicaIndex = Some(index),
+                                          signature = Some(ByteString.copyFrom(signToClient(slot, result))))
+            metrics.executedCommandsTotal.inc()
+          }
+      }
+    } else {
+      // Michael's original code
+      clientTable.get(clientIdentity) match {
+        case None =>
           val result =
             ByteString.copyFrom(stateMachine.run(commandByteArray))
           clientTable(clientIdentity) = (commandId.clientId, result)
           if (slot % config.numReplicas == index) {
             clientReplies += ClientReply(commandId = commandId,
-                                         slot = slot,
-                                         result = result)
+                                        slot = slot,
+                                        result = result)
           }
           metrics.executedCommandsTotal.inc()
-        }
+
+        case Some((largestClientId, cachedResult)) =>
+          if (commandId.clientId < largestClientId) {
+            metrics.reduntantlyExecutedCommandsTotal.inc()
+          } else if (commandId.clientId == largestClientId) {
+            clientReplies += ClientReply(commandId = commandId,
+                                        slot = slot,
+                                        result = cachedResult)
+            metrics.reduntantlyExecutedCommandsTotal.inc()
+          } else {
+            val result =
+              ByteString.copyFrom(stateMachine.run(commandByteArray))
+            clientTable(clientIdentity) = (commandId.clientId, result)
+            if (slot % config.numReplicas == index) {
+              clientReplies += ClientReply(commandId = commandId,
+                                          slot = slot,
+                                          result = result)
+            }
+            metrics.executedCommandsTotal.inc()
+          }
+      }
     }
   }
 

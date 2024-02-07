@@ -19,6 +19,8 @@ import scala.util.Random
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import java.security.MessageDigest
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 @JSExportAll
 object ClientInboundSerializer extends ProtoSerializer[ClientInbound] {
@@ -188,14 +190,14 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
       resendClientRequest: Transport#Timer
   ) extends State
 
-  // @JSExportAll
-  // case class PendingPBFTWrite(
-  //     id: Id,
-  //     command: Array[Byte],
-  //     result: Promise[Array[Byte]],
-  //     replies: mutable.Map[Int, ClientReply],
-  //     resendClientRequest: Transport#Timer
-  // ) extends State
+  @JSExportAll
+  case class PendingPBFTWrite(
+      id: Id,
+      command: Array[Byte],
+      result: Promise[Array[Byte]],
+      replies: mutable.Map[Int, (Int, ByteString)], // Map from replica index to (slot, result)
+      resendClientRequest: Transport#Timer
+  ) extends State
 
   @JSExportAll
   case class MaxSlot(
@@ -644,12 +646,22 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
         sendClientRequest(clientRequest, forceFlush = false)
 
         // Update our state.
-        states(pseudonym) = PendingWrite(
-          id = id,
-          command = command,
-          result = promise,
-          resendClientRequest = makeResendClientRequestTimer(clientRequest)
-        )
+        if (options.bft) {
+          states(pseudonym) = PendingPBFTWrite(
+            id = id,
+            command = command,
+            result = promise,
+            replies = mutable.Map(),
+            resendClientRequest = makeResendClientRequestTimer(clientRequest)
+          )
+        } else {
+          states(pseudonym) = PendingWrite(
+            id = id,
+            command = command,
+            result = promise,
+            resendClientRequest = makeResendClientRequestTimer(clientRequest)
+          )
+        }
         ids(pseudonym) = id + 1
         metrics.clientRequestsSentTotal.inc()
     }
@@ -864,6 +876,19 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     }
   }
 
+  private def verifyFromReplica(
+      slot: Int,
+      result: ByteString,
+      replicaIndex: Int,
+      signature: ByteString,
+  ): Boolean = {
+    val mac = Mac.getInstance("hmacSHA256")
+    val macKey = s"clientReplica$replicaIndex"
+    mac.init(new SecretKeySpec(macKey.getBytes, "hmacSHA256"))
+    mac.update(ByteBuffer.allocate(Integer.BYTES).order(ByteOrder.BIG_ENDIAN).putInt(slot).array())
+    mac.doFinal(result.toByteArray()).sameElements(signature.toByteArray())
+  }
+
   private def handleClientReply(
       src: Transport#Address,
       clientReply: ClientReply
@@ -873,6 +898,10 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     state match {
       case None | Some(_: MaxSlot) | Some(_: PendingRead) |
           Some(_: PendingSequentialRead) | Some(_: PendingEventualRead) =>
+        if (options.bft) {
+          // Removed logging, because the client continues after f+1 replica responses but remaining replicas may still be sending
+          return
+        }
         logger.debug(
           s"A client received a ClientReply, but the state is $state. The " +
             s"ClientReply is being ignored."
@@ -880,6 +909,9 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
         metrics.staleClientRepliesReceivedTotal.inc()
 
       case Some(pendingWrite: PendingWrite) =>
+        if (options.bft) {
+          logger.fatal("Client state shoudl be PendingPBFTWrite")
+        }
         if (clientReply.commandId.clientId != pendingWrite.id) {
           logger.debug(
             s"A client received a ClientReply for pseudonym ${pseudonym}, " +
@@ -899,6 +931,67 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
         )
         states -= pseudonym
         metrics.clientRepliesReceivedTotal.inc()
+      
+      case Some(pendingPBFTWrite: PendingPBFTWrite) =>
+        if (!options.bft) {
+          logger.fatal("Client state should be PendingWrite")
+        }
+        if (clientReply.commandId.clientId != pendingPBFTWrite.id) {
+          // logger.debug(
+          //   s"A client received a ClientReply for pseudonym ${pseudonym}, " +
+          //     s"but the client id ${clientReply.commandId.clientId} doesn't " +
+          //     s"match the expected client id ${pendingPBFTWrite.id}. The " +
+          //     s"ClientReply is being ignored."
+          // )
+          // metrics.staleClientRepliesReceivedTotal.inc()
+          
+          // Removed logging, because the client continues after f+1 replica responses but remaining replicas may still be sending
+          return
+        }
+
+        // Verify
+        val replicaIndex = clientReply.replicaIndex match {
+          case Some(i) => i
+          case None =>
+            logger.debug(s"Client received ClientReply with no replica index for slot ${clientReply.slot}")
+            return
+        }
+        val signature = clientReply.signature match {
+          case Some(s) => s
+          case None =>
+            logger.debug(s"Client received ClientReply with no signature for slot ${clientReply.slot} from replica ${clientReply.replicaIndex}")
+            return
+        }
+        val signatureValid = verifyFromReplica(clientReply.slot, clientReply.result, replicaIndex, signature)
+        if (!signatureValid) {
+          logger.debug(s"Client received ClientReply with invalid signature for slot ${clientReply.slot} from replica ${replicaIndex}")
+        }
+
+        // Wait for f+1 writes with the same digest
+        pendingPBFTWrite.replies(replicaIndex) = (clientReply.slot, clientReply.result)
+        if (pendingPBFTWrite.replies.size < config.f + 1) {
+          return
+        }
+        // Iterate over every other replica response to check equality.
+        for ((rIndex, (sl, res)) <- pendingPBFTWrite.replies) {
+          var count = 0
+          for ((rIndexOther, (slOther, resOther)) <- pendingPBFTWrite.replies) {
+            if (res.equals(resOther) && sl == slOther) {
+              count += 1
+              if (count >= config.f + 1) {
+                pendingPBFTWrite.resendClientRequest.stop()
+                pendingPBFTWrite.result.success(res.toByteArray())
+                largestSeenSlots(pseudonym) = Math.max(
+                  largestSeenSlots.getOrElse(pseudonym, -1),
+                  sl
+                )
+                states -= pseudonym
+                metrics.clientRepliesReceivedTotal.inc()
+                return
+              }
+            }
+          }
+        }
     }
   }
 
@@ -910,7 +1003,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     val state = states.get(pseudonym)
     state match {
       case None | Some(_: PendingWrite) | Some(_: PendingRead) |
-          Some(_: PendingSequentialRead) | Some(_: PendingEventualRead) =>
+          Some(_: PendingSequentialRead) | Some(_: PendingEventualRead) | Some(_: PendingPBFTWrite) =>
         logger.debug(
           s"A client received a MaxSlotReply, but the state is $state. The " +
             s"MaxSlotReply is being ignored."
@@ -992,7 +1085,7 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
     val pseudonym = readReply.commandId.clientPseudonym
     val state = states.get(pseudonym)
     state match {
-      case None | Some(_: PendingWrite) | Some(_: MaxSlot) =>
+      case None | Some(_: PendingWrite) | Some(_: MaxSlot) | Some(_: PendingPBFTWrite) =>
         logger.debug(
           s"A client received a ReadReply, but the state is $state. The " +
             s"ReadReply is being ignored."
