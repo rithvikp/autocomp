@@ -140,7 +140,7 @@ fn unwrap_commit(msg: (u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32, num_c
 pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) {
     let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
     let my_id = cfg.committer_index.unwrap();
-    println!("Committer {:?} started", my_id);
+    // println!("Committer {:?} started", my_id);
 
     let replica_send = ports
         .remove("send_to$replicas$0")
@@ -167,7 +167,7 @@ pub async fn run(cfg: CommitterArgs, mut ports: HashMap<String, ServerOrBound>) 
     let f = cfg.committer_f.unwrap();
     let num_committer_partitions = cfg.committer_num_committer_partitions.unwrap();
 
-    println!("Committer {:?} ready", my_id);
+    // println!("Committer {:?} ready", my_id);
 
     let df = datalog!(
         r#"

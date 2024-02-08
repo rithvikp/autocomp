@@ -119,7 +119,7 @@ fn create_decoupled_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command_id: Rc<V
 pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>) {
     let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
     let my_id = cfg.prepreparer_index.unwrap();
-    println!("Prepreparer {:?} started", my_id);
+    // println!("Prepreparer {:?} started", my_id);
 
     let preprepare_to_committer_sink = ports
         .remove("send_to$committers$0")
@@ -154,7 +154,7 @@ pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>
     let num_committer_partitions = cfg.prepreparer_num_committer_partitions.unwrap();
     let committers_start_id = leader_id * num_committer_partitions;
 
-    println!("Prepreparer {:?} ready", my_id);
+    // println!("Prepreparer {:?} ready", my_id);
 
     let df = datalog!(
         r#"

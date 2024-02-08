@@ -74,7 +74,7 @@ fn create_commit(slot: u32, digest: Rc<Vec<u8>>, sender: u32, receiver: u32) -> 
 pub async fn run(cfg: PreparerArgs, mut ports: HashMap<String, ServerOrBound>) {
     let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
     let my_id = cfg.preparer_index.unwrap();
-    println!("Preparer {:?} started", my_id);
+    // println!("Preparer {:?} started", my_id);
 
     let commit_to_committer_sink = ports
         .remove("send_to$committers$0")
@@ -98,7 +98,7 @@ pub async fn run(cfg: PreparerArgs, mut ports: HashMap<String, ServerOrBound>) {
         .step_by(num_committer_partitions.try_into().unwrap())
         .collect();
 
-    println!("Preparer {:?} ready", my_id);
+    // println!("Preparer {:?} ready", my_id);
 
     let df = datalog!(
         r#"

@@ -28,7 +28,17 @@ fn deserialize(msg: BytesMut, client_requests: &prometheus::Counter) -> Option<(
     if msg.len() == 0 {
         return None;
     }
-    let s = multipaxos_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref())).unwrap();
+    let s_option = multipaxos_proto::LeaderInbound::decode(&mut Cursor::new(msg.as_ref()));
+    if s_option.is_err() {
+        // For some reason, on large deployments, we sometimes get errors like:
+        // thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: DecodeError { description: "delimited length exceeded", stack: [("Command", "command_id"), ("CommandBatch", "command"), ("ClientRequestBatch", "batch"), ("LeaderInbound", "request")] }'
+        // and
+        // thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: DecodeError { description: "invalid wire type value: 6", stack: [("Command", "command_id"), ("CommandBatch", "command"), ("ClientRequestBatch", "batch"), ("LeaderInbound", "request")] }'
+        // They don't seem to prevent the protocol from executing correctly, so we'll just ignore it.
+        // println!("Leader received an invalid message from the client. Error: {:?}", s_option.err().unwrap());
+        return None;
+    }
+    let s = s_option.unwrap();
     client_requests.inc();
     // println!("Primary received {:?}", s);
 
@@ -83,7 +93,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
 
     let my_id = cfg.leader_index.unwrap();
-    println!("Leader {:?} started, waiting for clients", my_id);
+    // println!("Leader {:?} started, waiting for clients", my_id);
 
     let pre_prepare_to_prepreparer_port = ports
         .remove("send_to$prepreparers$0")
@@ -107,7 +117,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .step_by(num_prepreparer_partitions.try_into().unwrap())
         .collect();
 
-    println!("Leader {:?} ready", my_id);
+    // println!("Leader {:?} ready", my_id);
 
     let df = datalog!(
         r#"
