@@ -15,10 +15,10 @@ def main(args) -> None:
                     'replicas': 4, # Max across any benchmark
                     'clients': 4,
                     'leaders': 4,
-                    'proxy_leaders': 4*3,
-                    'prepreparers': 4*3,
-                    'preparers': 4*3,
-                    'committers': 4*3,
+                    'proxy_leaders': 4*1,
+                    'prepreparers': 4*1,
+                    'preparers': 4*1,
+                    'committers': 4*1,
                 },
             }
 
@@ -104,10 +104,10 @@ def main(args) -> None:
                 )
 
                 for value_size in [16]
-                for num_proxy_leaders_per_pbft_replica in [3]
-                for num_prepreparers_per_pbft_replica in [3]
-                for num_preparers_per_pbft_replica in [3]
-                for num_committers_per_pbft_replica in [3]
+                for num_proxy_leaders_per_pbft_replica in [1]
+                for num_prepreparers_per_pbft_replica in [1]
+                for num_preparers_per_pbft_replica in [1]
+                for num_committers_per_pbft_replica in [1]
                 for num_replicas in [4]
                 for (num_client_procs, num_clients_per_proc) in [
                     (1, 1),
