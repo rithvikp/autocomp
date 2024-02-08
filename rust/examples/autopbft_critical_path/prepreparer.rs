@@ -1,5 +1,3 @@
-use frankenpaxos::multipaxos_proto;
-use hydroflow::bytes::BytesMut;
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
@@ -8,8 +6,7 @@ use hydroflow::util::{
     deserialize_from_bytes, serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
-use prost::Message;
-use std::{collections::HashMap, io::Cursor, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
 
@@ -55,7 +52,7 @@ fn unwrap_pre_prepare(msg: (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u
     // println!("Unwrapping prePrepare: (Slot: {:?}, {:?}, {:?}, {:?}, Receiver: {:?})", slot, digest[0], sigp[0], command[0], receiver);
 
     // Verify the pre-prepare signature. Note: sender = 0 because only the leader (id = 0) sends pre-prepares
-    let mut preprepare_mac = get_mac(0, receiver);
+    let mut preprepare_mac = get_mac(0, leader_id);
     preprepare_mac.update(&slot.to_be_bytes());
     preprepare_mac.update(digest.as_slice());
     if preprepare_mac.verify_slice(sigp.as_slice()).is_err() {
@@ -117,7 +114,7 @@ fn create_decoupled_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command_id: Rc<V
 
 // Need to provide: clients, replicas, and smr (corresponding state machine replica)
 pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>) {
-    let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
+    // let client_requests = prometheus::register_counter!("autopbft_requests_total", "help").unwrap();
     let my_id = cfg.prepreparer_index.unwrap();
     // println!("Prepreparer {:?} started", my_id);
 
@@ -135,8 +132,8 @@ pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>
         .await
         .into_sink();
 
-    let pre_prepare_from_leader_source = ports
-        .remove("receive_from$leaders$0")
+    let pre_prepare_from_proxy_leader_source = ports
+        .remove("receive_from$proxy_leaders$0")
         .unwrap()
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
@@ -170,7 +167,7 @@ pub async fn run(cfg: PrepreparerArgs, mut ports: HashMap<String, ServerOrBound>
 
 # Pre-prepare (v = view, n = slot, d = hash digest of m, sig(p) = signature of (v,n,d), m = <o = command operation, t = timestamp, c = client>, sig(c) = signature of (o,t,c)).
 # Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <command_id, o = command operation>, sig(c) = signature of o).
-.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_leader_source) -> filter_map(|x| (unwrap_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>)>(x.unwrap().1).unwrap(), my_id, leader_id, num_prepreparer_partitions)))`
+.async prePrepareIn `null::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>)>()` `source_stream(pre_prepare_from_proxy_leader_source) -> filter_map(|x| (unwrap_pre_prepare(deserialize_from_bytes::<(u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>)>(x.unwrap().1).unwrap(), my_id, leader_id, num_prepreparer_partitions)))`
 
 # Prepare (v = view, n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (v,n,d,i)).
 # Simplified prepare (n = slot, d = hash digest of m, i = id of self, sig(i) = signature of (n,d,i)).

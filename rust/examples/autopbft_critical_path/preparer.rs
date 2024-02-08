@@ -1,5 +1,3 @@
-use frankenpaxos::multipaxos_proto;
-use hydroflow::bytes::BytesMut;
 use hydroflow::util::{
     cli::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
@@ -8,9 +6,8 @@ use hydroflow::util::{
     deserialize_from_bytes, serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
-use prost::Message;
-use std::{collections::HashMap, io::Cursor, rc::Rc};
-use sha2::{Sha256, Digest};
+use std::{collections::HashMap, rc::Rc};
+use sha2::Sha256;
 use hmac::{Hmac, Mac};
 
 #[derive(clap::Args, Debug)]

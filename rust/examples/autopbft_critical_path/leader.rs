@@ -5,12 +5,12 @@ use hydroflow::util::{
         launch_flow, ConnectedBidi, ConnectedDemux, ConnectedSink, ConnectedSource,
         ConnectedTagged, ServerOrBound,
     },
-    deserialize_from_bytes, serialize_to_bytes,
+    serialize_to_bytes,
 };
 use hydroflow_datalog::datalog;
 use prost::Message;
 use std::{collections::HashMap, io::Cursor, rc::Rc};
-use sha2::{Sha256, Digest};
+use sha2::Sha256;
 use hmac::{Hmac, Mac};
 
 #[derive(clap::Args, Debug)]
@@ -19,6 +19,8 @@ pub struct LeaderArgs {
     leader_index: Option<u32>,
     #[clap(long = "leader.f")]
     leader_f: Option<u32>,
+    #[clap(long = "leader.num-proxy-leader-partitions")]
+    leader_num_proxy_leader_partitions: Option<u32>,
     #[clap(long = "leader.num-prepreparer-partitions")]
     leader_num_prepreparer_partitions: Option<u32>,
 }
@@ -77,15 +79,19 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
 }
 
 // Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <o = command operation>, sig(c) = signature of o).
-fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command_id: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc: Rc<Vec<Vec<u8>>>, receiver: u32) -> (u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>) {
+fn create_pre_prepare(slot: u32, digest: Rc<Vec<u8>>, command_id: Rc<Vec<u8>>, command: Rc<Vec<u8>>, sigc: Rc<Vec<Vec<u8>>>, f: u32) -> (u32, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<Vec<u8>>>) {
     // println!("Creating prePrepare: (Slot: {:?}, {:?}, {:?}, {:?}, Receiver: {:?})", slot, digest[0], command[0], sigc[0], receiver);
     // sender = 0 because only the leader (id = 0) sends prePrepares
-    let mut mac = get_mac(0, receiver);
-    mac.update(&slot.to_be_bytes());
-    mac.update(digest.as_slice());
-    let sigp = mac.finalize().into_bytes();
+    // leader has to send a MAC authenticator since the proxy leader will need to talk to all prepreparers
+    let mut sigps = Vec::new();
+    for i in 0..(3*f+1) {
+        let mut mac = get_mac(0, i);
+        mac.update(&slot.to_be_bytes());
+        mac.update(digest.as_slice());
+        sigps.push(mac.finalize().into_bytes().to_vec());
+    }
     // println!("Signed prePrepare: {:?}", sigp[0]);
-    (slot, digest, Rc::new(sigp.to_vec()), command_id, command, sigc)
+    (slot, digest, Rc::new(sigps), command_id, command, sigc)
 }
 
 // Need to provide: clients, replicas, and smr (corresponding state machine replica)
@@ -95,11 +101,12 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
     let my_id = cfg.leader_index.unwrap();
     // println!("Leader {:?} started, waiting for clients", my_id);
 
-    let pre_prepare_to_prepreparer_port = ports
-        .remove("send_to$prepreparers$0")
+    let pre_prepare_to_proxy_leader_sink = ports
+        .remove("send_to$proxy_leaders$0")
         .unwrap()
         .connect::<ConnectedDemux<ConnectedBidi>>()
-        .await;
+        .await
+        .into_sink();
 
     let client_recv = ports
         .remove("receive_from$clients$0")
@@ -107,15 +114,10 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
         .connect::<ConnectedTagged<ConnectedBidi>>()
         .await
         .into_source();
-
-    let prepreparers = pre_prepare_to_prepreparer_port.keys.clone();
-    let pre_prepare_to_prepreparer_sink = pre_prepare_to_prepreparer_port.into_sink();
-
+    
     let f = cfg.leader_f.unwrap();
-    let num_prepreparer_partitions = cfg.leader_num_prepreparer_partitions.unwrap();
-    let prepreparer_start_ids: Vec<u32> = (0u32..((3*f+1) * num_prepreparer_partitions))
-        .step_by(num_prepreparer_partitions.try_into().unwrap())
-        .collect();
+    let num_proxy_leader_partitions = cfg.leader_num_proxy_leader_partitions.unwrap();
+    let proxy_leader_start_id = my_id * num_proxy_leader_partitions;
 
     // println!("Leader {:?} ready", my_id);
 
@@ -125,8 +127,8 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 # EDB
 .input id `repeat_iter([(my_id,),])`
 .input leaderId `repeat_iter([(0,),])`
-.input prepreparerStartIDs `repeat_iter(prepreparer_start_ids.clone()) -> map(|p| (p,))` # Assume = 0,m,2m,...,(n-1)*m, for n prepreparers and m partitions
-.input numPrepreparerPartitions `repeat_iter([(num_prepreparer_partitions,),])` 
+.input proxyLeaderStartID `repeat_iter([(proxy_leader_start_id,),])` # Assume = 0,m,2m,...,(n-1)*m, for n proxy leaders and m partitions
+.input numProxyLeaderPartitions `repeat_iter([(num_proxy_leader_partitions,),])` 
 
 # IDB
 
@@ -140,7 +142,7 @@ pub async fn run(cfg: LeaderArgs, mut ports: HashMap<String, ServerOrBound>) {
 
 # Pre-prepare (v = view, n = slot, d = hash digest of m, sig(p) = signature of (v,n,d), m = <o = command operation, t = timestamp, c = client>, sig(c) = signature of (o,t,c)).
 # Simplified pre-prepare (n = slot, d = hash digest of m, sig(p) = signature of (n,d), m = <command_id, o = command operation>, sig(c) = signature of o).
-.async prePrepareOut `map(|(node_id, (slot, digest, command_id, command, sigc))| (node_id, serialize_to_bytes(create_pre_prepare(slot, digest, command_id, command, sigc, node_id)))) -> dest_sink(pre_prepare_to_prepreparer_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
+.async prePrepareOut `map(|(node_id, (slot, digest, command_id, command, sigc))| (node_id, serialize_to_bytes(create_pre_prepare(slot, digest, command_id, command, sigc, f)))) -> dest_sink(pre_prepare_to_proxy_leader_sink)` `null::<(Rc<Vec<u8>>, u32,)>()`
 
 ######################## end relation definitions
 
@@ -151,7 +153,7 @@ nextSlot(max(s)) :- slots(s)
 ######################## pre-prepare
 IndexedPayloads(commandID, command, sigc, digest, index()) :- clientIn(commandID, command, sigc, digest), IsLeader()
 SlottedPayloads(commandID, command, sigc, digest, (slot + offset)) :- IndexedPayloads(commandID, command, sigc, digest, offset), nextSlot(slot)
-prePrepareOut@(r+(slot%n))(slot, digest, commandID, command, sigc) :~ SlottedPayloads(commandID, command, sigc, digest, slot), prepreparerStartIDs(r), numPrepreparerPartitions(n)
+prePrepareOut@(r+(slot%n))(slot, digest, commandID, command, sigc) :~ SlottedPayloads(commandID, command, sigc, digest, slot), proxyLeaderStartID(r), numProxyLeaderPartitions(n)
 
 # Increment slot
 NumPayloads(max(offset)) :- IndexedPayloads(_, _, _, _, offset)

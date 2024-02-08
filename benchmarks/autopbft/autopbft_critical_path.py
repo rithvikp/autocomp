@@ -67,6 +67,7 @@ class Input(NamedTuple):
     num_warmup_clients_per_proc: int
     num_clients_per_proc: int
     num_pbft_replicas: int
+    num_proxy_leaders_per_pbft_replica: int
     num_prepreparers_per_pbft_replica: int
     num_preparers_per_pbft_replica: int
     num_committers_per_pbft_replica: int
@@ -126,6 +127,7 @@ class AutoPBFTCriticalPathNet:
     class Placement(NamedTuple):
         clients: List[host.Endpoint]
         leaders: List[host.Endpoint]
+        proxy_leaders: List[host.Endpoint]
         prepreparers: List[host.Endpoint]
         preparers: List[host.Endpoint]
         committers: List[host.Endpoint]
@@ -145,6 +147,7 @@ class AutoPBFTCriticalPathNet:
         return self.Placement(
             clients=portify('clients', self._input.num_client_procs),
             leaders=portify('leaders', self._input.num_pbft_replicas),
+            proxy_leaders=portify('proxy_leaders', self._input.num_pbft_replicas * self._input.num_proxy_leaders_per_pbft_replica),
             prepreparers=portify('prepreparers', self._input.num_pbft_replicas * self._input.num_prepreparers_per_pbft_replica),
             preparers=portify('preparers', self._input.num_pbft_replicas * self._input.num_preparers_per_pbft_replica),
             committers=portify('committers', self._input.num_pbft_replicas * self._input.num_committers_per_pbft_replica),
@@ -165,6 +168,7 @@ class AutoPBFTCriticalPathNet:
         return self.Placement(
             clients=portify('clients', self._input.num_client_procs),
             leaders=portify('leaders', self._input.num_pbft_replicas),
+            proxy_leaders=portify('proxy_leaders', self._input.num_pbft_replicas * self._input.num_proxy_leaders_per_pbft_replica),
             prepreparers=portify('prepreparers', self._input.num_pbft_replicas * self._input.num_prepreparers_per_pbft_replica),
             preparers=portify('preparers', self._input.num_pbft_replicas * self._input.num_preparers_per_pbft_replica),
             committers=portify('committers', self._input.num_pbft_replicas * self._input.num_committers_per_pbft_replica),
@@ -188,7 +192,7 @@ class AutoPBFTCriticalPathNet:
             'proxy_leader_address': [{
                 'host': e.host.ip(),
                 'port': e.port
-            } for e in self.placement(index=index).leaders],
+            } for e in self.placement(index=index).proxy_leaders],
             'prepreparer_address': [{
                 'host': e.host.ip(),
                 'port': e.port
@@ -235,7 +239,7 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
         bench.log('Pre-benchmark lag ended.')
 
         # Launch PBFT nodes
-        if self.service_type("leaders") == "hydroflow" and self.service_type("prepreparers") == "hydroflow" and self.service_type("preparers") == "hydroflow" and self.service_type("committers") == "hydroflow":
+        if self.service_type("leaders") == "hydroflow" and self.service_type("proxy_leaders") == "hydroflow" and self.service_type("prepreparers") == "hydroflow" and self.service_type("preparers") == "hydroflow" and self.service_type("committers") == "hydroflow":
             committer_procs: List[proc.Proc] = []
             for i in range(input.num_pbft_replicas):
                 for (j, committer) in enumerate(net.prom_placement().committers[i*input.num_committers_per_pbft_replica:(i+1)*input.num_committers_per_pbft_replica]):
@@ -301,6 +305,23 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                         str(prepreparer.port),
                     ]))
 
+            proxy_leader_procs: List[proc.Proc] = []
+            for (i, proxy_leader) in enumerate(net.prom_placement().proxy_leaders):
+                proxy_leader_procs.append(self.provisioner.popen_hydroflow(bench, f'proxy_leaders_{i}', input.f, [
+                    '--service',
+                    'proxy-leader',
+                    '--proxy-leader.index',
+                    str(i),
+                    '--proxy-leader.f',
+                    str(input.f),
+                    '--proxy-leader.num-prepreparer-partitions',
+                    str(input.num_prepreparers_per_pbft_replica),
+                    '--prometheus-host',
+                    proxy_leader.host.ip(),
+                    '--prometheus-port',
+                    str(proxy_leader.port),
+                ]))
+
             leader_procs: List[proc.Proc] = []
             for (i, leader) in enumerate(net.prom_placement().leaders):
                 leader_procs.append(self.provisioner.popen_hydroflow(bench, f'leaders_{i}', input.f, [
@@ -310,6 +331,8 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                     str(i),
                     '--leader.f',
                     str(input.f),
+                    '--leader.num-proxy-leader-partitions',
+                    str(input.num_proxy_leaders_per_pbft_replica),
                     '--leader.num-prepreparer-partitions',
                     str(input.num_prepreparers_per_pbft_replica),
                     '--prometheus-host',
@@ -318,12 +341,13 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                     str(leader.port),
                 ]))
         else:
-            raise ValueError("AutoPBFTCriticalPathSuite only supports hydroflow leaders, prepreparers, preparers, and committers")
+            raise ValueError("AutoPBFTCriticalPathSuite only supports hydroflow leaders, proxy leaders, prepreparers, preparers, and committers")
 
         bench.log("Reconfiguring the system for a new benchmark")
         endpoints, receive_endpoints = self.provisioner.rebuild(1, {
             "clients": ["leaders"],
-            "leaders": ["prepreparers"],
+            "leaders": ["proxy_leaders"],
+            "proxy_leaders": ["prepreparers"],
             "prepreparers": ["preparers", "committers"],
             "preparers": ["committers"],
             "committers": ["replicas"],
@@ -426,6 +450,10 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
                     'leader': [
                         f'{e.host.ip()}:{e.port}'
                         for e in net.prom_placement().leaders
+                    ],
+                    'proxy_leader': [
+                        f'{e.host.ip()}:{e.port}'
+                        for e in net.prom_placement().proxy_leaders
                     ],
                     'prepreparer': [
                         f'{e.host.ip()}:{e.port}'
@@ -568,7 +596,7 @@ class AutoPBFTCriticalPathSuite(benchmark.Suite[Input, Output]):
         # Wait for clients to finish and then terminate pbft_replicas.
         for p in client_procs:
             p.wait()
-        for p in (leader_procs + prepreparer_procs + preparer_procs + committer_procs + replica_procs):
+        for p in (leader_procs + proxy_leader_procs + prepreparer_procs + preparer_procs + committer_procs + replica_procs):
             p.kill()
         if input.monitored:
             prometheus_server.kill()

@@ -1,5 +1,6 @@
 use clap::Parser;
 mod leader;
+mod proxy_leader;
 mod prepreparer;
 mod preparer;
 mod committer;
@@ -7,6 +8,7 @@ mod committer;
 #[derive(clap::ValueEnum, Debug, Clone)]
 enum Service {
     Leader,
+    ProxyLeader,
     Prepreparer,
     Preparer,
     Committer,
@@ -26,6 +28,9 @@ struct Args {
     leader: leader::LeaderArgs,
 
     #[clap(flatten)]
+    proxy_leader: proxy_leader::ProxyLeaderArgs,
+
+    #[clap(flatten)]
     prepreparer: prepreparer::PrepreparerArgs,
 
     #[clap(flatten)]
@@ -43,6 +48,7 @@ async fn main() {
 
     match args.service {
         Service::Leader => leader::run(args.leader, ports).await,
+        Service::ProxyLeader => proxy_leader::run(args.proxy_leader, ports).await,
         Service::Prepreparer => prepreparer::run(args.prepreparer, ports).await,
         Service::Preparer => preparer::run(args.preparer, ports).await,
         Service::Committer => committer::run(args.committer, ports).await,

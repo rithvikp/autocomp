@@ -13,11 +13,12 @@ def main(args) -> None:
             return {
                 '1': {
                     'replicas': 4, # Max across any benchmark
-                    'clients': 1,
+                    'clients': 4,
                     'leaders': 4,
-                    'prepreparers': 4*2,
-                    'preparers': 4*2,
-                    'committers': 4*2,
+                    'proxy_leaders': 4*3,
+                    'prepreparers': 4*3,
+                    'preparers': 4*3,
+                    'committers': 4*3,
                 },
             }
 
@@ -29,6 +30,7 @@ def main(args) -> None:
                     num_warmup_clients_per_proc = num_clients_per_proc,
                     num_clients_per_proc = num_clients_per_proc,
                     num_pbft_replicas = 4,
+                    num_proxy_leaders_per_pbft_replica = num_proxy_leaders_per_pbft_replica,
                     num_prepreparers_per_pbft_replica = num_prepreparers_per_pbft_replica,
                     num_preparers_per_pbft_replica = num_preparers_per_pbft_replica,
                     num_committers_per_pbft_replica = num_committers_per_pbft_replica,
@@ -102,17 +104,18 @@ def main(args) -> None:
                 )
 
                 for value_size in [16]
-                for num_prepreparers_per_pbft_replica in [2]
-                for num_preparers_per_pbft_replica in [2]
-                for num_committers_per_pbft_replica in [2]
+                for num_proxy_leaders_per_pbft_replica in [3]
+                for num_prepreparers_per_pbft_replica in [3]
+                for num_preparers_per_pbft_replica in [3]
+                for num_committers_per_pbft_replica in [3]
                 for num_replicas in [4]
                 for (num_client_procs, num_clients_per_proc) in [
                     (1, 1),
                     (1, 50),
                     (1, 100),
                     (2, 100),
-                    # (3, 100),
-                    # (4, 100),
+                    (3, 100),
+                    (4, 100),
                     # (5, 100),
                     # (6, 100),
                     # (7, 100),
@@ -129,6 +132,7 @@ def main(args) -> None:
                 'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
                 'num_leaders': input.num_pbft_replicas,
+                'num_proxy_leaders_per_pbft_replica': input.num_proxy_leaders_per_pbft_replica,
                 'num_prepreparers_per_pbft_replica': input.num_prepreparers_per_pbft_replica,
                 'num_preparers_per_pbft_replica': input.num_preparers_per_pbft_replica,
                 'num_committers_per_pbft_replica': input.num_committers_per_pbft_replica,
