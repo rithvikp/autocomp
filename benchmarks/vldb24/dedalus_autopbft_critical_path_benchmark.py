@@ -1,7 +1,7 @@
-from benchmarks.multipaxos.dedalus_multipaxos import *
+from benchmarks.autopbft.autopbft_critical_path import *
 
 def main(args) -> None:
-    class Suite(DedalusMultiPaxosSuite):
+    class Suite(AutoPBFTCriticalPathSuite):
         def __init__(self, args) -> None:
             self._args = args
             super().__init__()
@@ -12,10 +12,13 @@ def main(args) -> None:
         def cluster_spec(self) -> Dict[str, Dict[str, int]]:
             return {
                 '1': {
-                    'leaders': 2,
                     'replicas': 4, # Max across any benchmark
-                    'clients': 4, # Max across any benchmark
-                    'acceptors': 3, # Max across any benchmark
+                    'clients': 4,
+                    'leaders': 4,
+                    'proxy_leaders': 4*1,
+                    'prepreparers': 4*1,
+                    'preparers': 4*1,
+                    'committers': 4*1,
                 },
             }
 
@@ -26,12 +29,17 @@ def main(args) -> None:
                     num_client_procs = num_client_procs,
                     num_warmup_clients_per_proc = num_clients_per_proc,
                     num_clients_per_proc = num_clients_per_proc,
-                    num_leaders = 2,
-                    num_acceptors = num_acceptors,
+                    num_pbft_replicas = 4,
+                    num_proxy_leaders_per_pbft_replica = num_proxy_leaders_per_pbft_replica,
+                    num_prepreparers_per_pbft_replica = num_prepreparers_per_pbft_replica,
+                    num_preparers_per_pbft_replica = num_preparers_per_pbft_replica,
+                    num_committers_per_pbft_replica = num_committers_per_pbft_replica,
+                    num_acceptors = 3,
                     num_replicas = num_replicas,
                     client_jvm_heap_size = '8g',
                     replica_jvm_heap_size = '12g',
                     measurement_group_size = 10,
+                    start_lag = datetime.timedelta(seconds=0),
                     warmup_duration = datetime.timedelta(seconds=25),
                     warmup_timeout = datetime.timedelta(seconds=30),
                     warmup_sleep = datetime.timedelta(seconds=5),
@@ -64,13 +72,6 @@ def main(args) -> None:
                     monitored = args.monitor,
                     prometheus_scrape_interval =
                         datetime.timedelta(milliseconds=200),
-                    leader_options = LeaderOptions(
-                        flush_every_n = leader_flush_every_n,
-                        p1a_node_0_timeout = 300,
-                        p1a_other_nodes_timeout = 60000,
-                        i_am_leader_resend_timeout = 2000,
-                        i_am_leader_check_timeout = 5000,
-                    ),
                     replica_options = ReplicaOptions(
                         log_grow_size = 5000,
                         unsafe_dont_use_client_table = False,
@@ -99,56 +100,28 @@ def main(args) -> None:
                         flush_reads_every_n = 1,
                     ),
                     client_log_level = args.log_level,
+                    bft = True,
                 )
 
-
                 for value_size in [16]
-                for num_acceptors in [3]
+                for num_proxy_leaders_per_pbft_replica in [1]
+                for num_prepreparers_per_pbft_replica in [1]
+                for num_preparers_per_pbft_replica in [1]
+                for num_committers_per_pbft_replica in [1]
                 for num_replicas in [4]
-                for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
-                    (1, 1, 1),
-                    (1, 50, 10),
-                    (1, 100, 10),
-                    (2, 100, 10),
-                    (3, 100, 10),
-                    (4, 100, 10),
-                    # (5, 100, 10),
-                    # (6, 100, 10),
-                    # (7, 100, 10),
-                    # (8, 100, 10),
-                    # (9, 100, 10),
-                    # (10, 100, 10),
-
-                    # (1, 1, 1),
-                    # (1, 25, 1),
-                    # (1, 50, 10),
-                    # (1,75,10),
-                    # (1, 100, 10),
-                    # (1, 150, 10),
-                    # (2, 50, 10),
-                    # (2,75,10),
-                    # (2, 100, 10),
-                    # (2, 150, 10),
-                    # (3, 50, 10),
-                    # (3,75,10),
-                    # (3, 100, 10),
-                    # (3, 150, 10),
-                    # (4, 50, 10),
-                    # (4,75,10),
-                    # (4, 100, 10),
-                    # (4, 150, 10),
-                    # (5, 50, 10),
-                    # (5, 100, 10),
-                    # (5, 150, 10),
-                    # (6, 50, 10),
-                    # (6, 100, 10),
-                    # (6,150,10),
-                    # (7, 50, 10),
-                    # (7, 100, 10),
-                    # (7,150,10),
-                    # (8, 100, 10),
-                    # (9, 100, 10),
-                    # (10, 100, 10),
+                for (num_client_procs, num_clients_per_proc) in [
+                    (1, 1),
+                    (1, 50),
+                    (1, 100),
+                    (2, 100),
+                    (3, 100),
+                    (4, 100),
+                    # (5, 100),
+                    # (6, 100),
+                    # (7, 100),
+                    # (8, 100),
+                    # (9, 100),
+                    # (10, 100),
                 ]
             ] *3
 
@@ -158,17 +131,21 @@ def main(args) -> None:
                 'value_size': input.workload,
                 'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
-                'num_acceptors': input.num_acceptors,
+                'num_leaders': input.num_pbft_replicas,
+                'num_proxy_leaders_per_pbft_replica': input.num_proxy_leaders_per_pbft_replica,
+                'num_prepreparers_per_pbft_replica': input.num_prepreparers_per_pbft_replica,
+                'num_preparers_per_pbft_replica': input.num_preparers_per_pbft_replica,
+                'num_committers_per_pbft_replica': input.num_committers_per_pbft_replica,
                 'num_replicas': input.num_replicas,
-                'leader_flush_every_n': input.leader_options.flush_every_n,
                 'write.latency.median_ms': f'{output.write_output.latency.median_ms:.6}',
                 'write.start_throughput_1s.p90': f'{output.write_output.start_throughput_1s.p90:.8}',
+                'bft': input.bft,
             })
 
 
     suite = Suite(args)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'multipaxos_lt_dedalus') as dir:
+                                  'autopbft_critical_path_lt_dedalus') as dir:
         suite.run_suite(dir)
 
 

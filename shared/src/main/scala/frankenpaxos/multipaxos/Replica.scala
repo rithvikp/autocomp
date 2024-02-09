@@ -16,6 +16,11 @@ import frankenpaxos.statemachine.StateMachine
 import frankenpaxos.util
 import scala.scalajs.js.annotation._
 import scala.util.Random
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import java.security.MessageDigest
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 @JSExportAll
 object ReplicaInboundSerializer extends ProtoSerializer[ReplicaInbound] {
@@ -54,7 +59,9 @@ case class ReplicaOptions(
     // performance debugging.
     unsafeDontRecover: Boolean,
     measureLatencies: Boolean,
-    connectToLeader: Boolean
+    connectToLeader: Boolean,
+    // True if the replica needs to verify the signature, sign, and send every message to the client
+    bft: Boolean
 )
 
 @JSExportAll
@@ -67,7 +74,8 @@ object ReplicaOptions {
     recoverLogEntryMaxPeriod = java.time.Duration.ofMillis(10000),
     unsafeDontRecover = false,
     measureLatencies = true,
-    connectToLeader = true
+    connectToLeader = true,
+    bft = false
   )
 }
 
@@ -302,6 +310,37 @@ class Replica[Transport <: frankenpaxos.Transport[Transport]](
     chan[Client[Transport]](clientAddress, Client.serializer)
   }
 
+  // Hash command for PBFT. Make sure PBFT is also using SHA-256
+  private def createDigest(
+    command: Array[Byte]
+  ): Array[Byte] = {
+    MessageDigest.getInstance("SHA-256").digest(command)
+  }
+
+  // Sign. Key for each PBFT replica = replica<replicaID>
+  private def verify(
+      slot: Int,
+      digest: Array[Byte],
+      signature: Array[Byte]
+  ): Boolean = {
+    val mac = Mac.getInstance("hmacSHA256")
+    val macKey = s"replica$index"
+    mac.init(new SecretKeySpec(macKey.getBytes, "hmacSHA256"))
+    mac.update(ByteBuffer.allocate(Integer.BYTES).order(ByteOrder.BIG_ENDIAN).putInt(slot).array())
+    mac.doFinal(digest).sameElements(signature)
+  }
+
+  private def signToClient(
+      slot: Int,
+      result: ByteString
+  ): Array[Byte] = {
+    val mac = Mac.getInstance("hmacSHA256")
+    val macKey = s"clientReplica$index"
+    mac.init(new SecretKeySpec(macKey.getBytes, "hmacSHA256"))
+    mac.update(ByteBuffer.allocate(Integer.BYTES).order(ByteOrder.BIG_ENDIAN).putInt(slot).array())
+    mac.doFinal(result.toByteArray())
+  }
+
   // `executeCommand(slot, command, clientReplies)` attempts to execute the
   // command `command` in slot `slot`. Attempting to execute `command` may or
   // may not produce a corresponding ClientReply. If the command is stale, it
@@ -318,38 +357,93 @@ class Replica[Transport <: frankenpaxos.Transport[Transport]](
       clientReplies: mutable.Buffer[ClientReply]
   ): Unit = {
     val commandId = command.commandId
+    val commandByteArray = command.command.toByteArray()
     val clientIdentity = (commandId.clientAddress, commandId.clientPseudonym)
-    clientTable.get(clientIdentity) match {
-      case None =>
-        val result =
-          ByteString.copyFrom(stateMachine.run(command.command.toByteArray()))
-        clientTable(clientIdentity) = (commandId.clientId, result)
-        if (slot % config.numReplicas == index) {
-          clientReplies += ClientReply(commandId = commandId,
-                                       slot = slot,
-                                       result = result)
-        }
-        metrics.executedCommandsTotal.inc()
 
-      case Some((largestClientId, cachedResult)) =>
-        if (commandId.clientId < largestClientId) {
-          metrics.reduntantlyExecutedCommandsTotal.inc()
-        } else if (commandId.clientId == largestClientId) {
-          clientReplies += ClientReply(commandId = commandId,
-                                       slot = slot,
-                                       result = cachedResult)
-          metrics.reduntantlyExecutedCommandsTotal.inc()
-        } else {
+    if (options.bft) {
+      // Verify signature
+      val digest = createDigest(commandByteArray)
+      val signature = command.signature0 match {
+        case Some(sig) => sig.toByteArray()
+        case None =>
+          logger.debug(s"Replica ${index} received command ${commandByteArray} at slot ${slot} without signature.")
+          return
+      }
+      val signatureValid = verify(slot, digest, signature)
+      if (!signatureValid) {
+        logger.debug(s"Replica ${index} received command ${commandByteArray} at slot ${slot} with invalid signature ${signature}")
+        return
+      }
+
+      // Execute. Difference from CFT: All replicas reply to the client and include their own signature.
+      clientTable.get(clientIdentity) match {
+        case None =>
           val result =
-            ByteString.copyFrom(stateMachine.run(command.command.toByteArray()))
+            ByteString.copyFrom(stateMachine.run(commandByteArray))
+          clientTable(clientIdentity) = (commandId.clientId, result)
+          clientReplies += ClientReply(commandId = commandId,
+                                        slot = slot,
+                                        result = result,
+                                        replicaIndex = Some(index),
+                                        signature = Some(ByteString.copyFrom(signToClient(slot, result))))
+          metrics.executedCommandsTotal.inc()
+
+        case Some((largestClientId, cachedResult)) =>
+          if (commandId.clientId < largestClientId) {
+            metrics.reduntantlyExecutedCommandsTotal.inc()
+          } else if (commandId.clientId == largestClientId) {
+            clientReplies += ClientReply(commandId = commandId,
+                                        slot = slot,
+                                        result = cachedResult,
+                                        replicaIndex = Some(index),
+                                        signature = Some(ByteString.copyFrom(signToClient(slot, cachedResult))))
+            metrics.reduntantlyExecutedCommandsTotal.inc()
+          } else {
+            val result =
+              ByteString.copyFrom(stateMachine.run(commandByteArray))
+            clientTable(clientIdentity) = (commandId.clientId, result)
+            clientReplies += ClientReply(commandId = commandId,
+                                          slot = slot,
+                                          result = result,
+                                          replicaIndex = Some(index),
+                                          signature = Some(ByteString.copyFrom(signToClient(slot, result))))
+            metrics.executedCommandsTotal.inc()
+          }
+      }
+    } else {
+      // Michael's original code
+      clientTable.get(clientIdentity) match {
+        case None =>
+          val result =
+            ByteString.copyFrom(stateMachine.run(commandByteArray))
           clientTable(clientIdentity) = (commandId.clientId, result)
           if (slot % config.numReplicas == index) {
             clientReplies += ClientReply(commandId = commandId,
-                                         slot = slot,
-                                         result = result)
+                                        slot = slot,
+                                        result = result)
           }
           metrics.executedCommandsTotal.inc()
-        }
+
+        case Some((largestClientId, cachedResult)) =>
+          if (commandId.clientId < largestClientId) {
+            metrics.reduntantlyExecutedCommandsTotal.inc()
+          } else if (commandId.clientId == largestClientId) {
+            clientReplies += ClientReply(commandId = commandId,
+                                        slot = slot,
+                                        result = cachedResult)
+            metrics.reduntantlyExecutedCommandsTotal.inc()
+          } else {
+            val result =
+              ByteString.copyFrom(stateMachine.run(commandByteArray))
+            clientTable(clientIdentity) = (commandId.clientId, result)
+            if (slot % config.numReplicas == index) {
+              clientReplies += ClientReply(commandId = commandId,
+                                          slot = slot,
+                                          result = result)
+            }
+            metrics.executedCommandsTotal.inc()
+          }
+      }
     }
   }
 
