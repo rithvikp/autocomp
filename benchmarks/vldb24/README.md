@@ -1,6 +1,6 @@
-# VLDB '24 Submission
+# Benchmark scripts
 
-This directory contains the benchmark scripts used in our VLDB'24 submission. For our protocol implementations, refer to the top-level README.
+This directory contains the benchmark scripts used in our SIGMOD'24 and PaPoC'24 submissions. For our protocol implementations, refer to the top-level README.
 
 Each `*_benchmark.py` script defines a single benchmark (which may include hyperparameter searches and multiple trials). The plotting code and results are in [`plots/`](plots/).
 

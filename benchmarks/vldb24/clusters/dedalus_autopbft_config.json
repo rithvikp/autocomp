@@ -1,0 +1,41 @@
+{
+    "mode": "hydro",
+    "env": {
+        "cloud": "gcp",
+        "project": "bigger-not-badder",
+        "machine_type": "n2-standard-4",
+        "scala_image": "worker-image",
+        "hydroflow_image": "worker-image",
+        "zone": "us-central1-a",
+        "vpc": "eval-network",
+        "user": "davidchu"
+    },
+    "services": {
+        "clients": {
+            "type": "scala"
+        },
+        "leaders": {
+            "type": "hydroflow",
+            "rust_example": "autopbft_critical_path"
+        },
+        "proxy_leaders": {
+            "type": "hydroflow",
+            "rust_example": "autopbft_critical_path"
+        },
+        "prepreparers": {
+            "type": "hydroflow",
+            "rust_example": "autopbft_critical_path"
+        },
+        "preparers": {
+            "type": "hydroflow",
+            "rust_example": "autopbft_critical_path"
+        },
+        "committers": {
+            "type": "hydroflow",
+            "rust_example": "autopbft_critical_path"
+        },
+        "replicas": {
+            "type": "scala"
+        }
+    }
+}

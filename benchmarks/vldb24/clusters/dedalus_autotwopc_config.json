@@ -1,0 +1,42 @@
+{
+    "mode": "hydro",
+    "env": {
+        "cloud": "gcp",
+        "project": "bigger-not-badder",
+        "machine_type": "n2-standard-4",
+        "scala_image": "worker-image",
+        "hydroflow_image": "worker-image",
+        "zone": "us-central1-a",
+        "vpc": "eval-network",
+        "user": "davidchu"
+    },
+    "services": {
+        "clients": {
+            "type": "scala"
+        },
+        "leaders": {
+            "type": "hydroflow",
+            "rust_example": "autotwopc"
+        },
+        "vote_requesters": {
+            "type": "hydroflow",
+            "rust_example": "autotwopc"
+        },
+        "participant_voters": {
+            "type": "hydroflow",
+            "rust_example": "autotwopc"
+        },
+        "committers": {
+            "type": "hydroflow",
+            "rust_example": "autotwopc"
+        },
+        "participant_ackers": {
+            "type": "hydroflow",
+            "rust_example": "autotwopc"
+        },
+        "enders": {
+            "type": "hydroflow",
+            "rust_example": "autotwopc"
+        }
+    }
+}

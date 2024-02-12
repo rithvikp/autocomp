@@ -1,0 +1,26 @@
+{
+    "mode": "hydro",
+    "env": {
+        "cloud": "gcp",
+        "project": "bigger-not-badder",
+        "machine_type": "n2-standard-4",
+        "scala_image": "worker-image",
+        "hydroflow_image": "worker-image",
+        "zone": "us-central1-a",
+        "vpc": "eval-network",
+        "user": "davidchu"
+    },
+    "services": {
+        "clients": {
+            "type": "scala"
+        },
+        "leaders": {
+            "type": "hydroflow",
+            "rust_example": "voting"
+        },
+        "replicas": {
+            "type": "hydroflow",
+            "rust_example": "voting"
+        }
+    }
+}
