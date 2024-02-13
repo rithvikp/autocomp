@@ -208,6 +208,8 @@ If the constant is an array, you need to clone it and then map each element to a
 #### Timers
 Timers can be implemented with `.input`. See how it's used in the [Paxos leader](https://github.com/rithvikp/autocomp/blob/27127efec52ba39f1c31cd5d4b9076c26eb6aedd/rust/examples/multipaxos/leader.rs#L215).
 
+#### Logging
+You can write to files with `.output`. See how it's used in [2PC](https://github.com/rithvikp/autocomp/blob/d356ff10a2e69fe3c5477c020a957e76ea883703/rust/examples/twopc/participant.rs#L59).
 
 #### Inputs and outputs
 Message channels are defined as `.async <dedalus_name> <rust_sink> <rust_source>`.  
@@ -254,7 +256,7 @@ Persisted relations `r` require an extra line:
 .persist r
 ```
 
-Synchronous rules (where facts arrive at the head at time `t+1`) replace `:-` with `:+`.
+Synchronous rules (where facts arrive at the head at time `t+1`) use `:+` instead of `:-`.
 
 Basic arithmetic can be performed with `+`, `-`, `*`, and `%` (mod) in the head of rules, with support for parentheses.
 Comparisons can be performed with `==`, `!=`, `<`, `>`, `<=`, and `>=` in the body of rules.
@@ -278,7 +280,7 @@ class Input(NamedTuple):
 Throughout this file, rename any references to the PBFT classes, such as `DedalusPBFTCriticalPathOutput` or `DedalusPBFTCriticalPathNet`, to your protocol.
 
 ##### Network
-Add your components below:
+Add your components in the file below this class:
 ```python
 class Placement(NamedTuple):
 ```
@@ -302,7 +304,7 @@ Also add it to the object returned in `config()`:
 > If you create a component here that did not exist before, you will need to add it to your protocol's Scala client's `Config.proto` file under [jvm/src/main/scala/frankenpaxos](jvm/src/main/scala/frankenpaxos). Then, you must recompile Scala and move the `.jar` to mnt/nfs/tmp, as described [here](#1-decide-what-your-clients-will-do).
 
 ##### Suite
-For every component, launch it by writing code similar to this, replacing all references to `pbft_replicas` with references to your component:
+For every component, find code similar to the code below, then replace all references to `pbft_replicas` with references to your component:
 ```python
 if self.service_type("pbft_replicas") == "hydroflow":
     pbft_replica_procs: List[proc.Proc] = []
