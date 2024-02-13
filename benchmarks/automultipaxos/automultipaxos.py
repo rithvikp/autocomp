@@ -141,7 +141,7 @@ class AutoMultiPaxosNet:
         p2b_proxy_leaders: List[host.Endpoint]
 
     def prom_placement(self) -> Placement:
-        ports = itertools.count(40001+self._run_index, 100)
+        ports = itertools.count(60001+self._run_index, 100)
 
         def portify_one(e: host.PartialEndpoint) -> host.Endpoint:
             return host.Endpoint(e.host, next(ports) if self._input.monitored else -1)
