@@ -38,7 +38,8 @@ Go [here](https://console.cloud.google.com/compute/instances) and click "Create 
 Other than the name, the options don't really matter, as long as the machine has enough disk and good enough specs so it won't slow down the experiment. The default 10GB of disk is enough.
 
 ### Set up SSH
-On your personal computer, run `gcloud compute ssh --zone "<zone>" "eval-nfs" --project "<project>"`.
+On your personal computer, run `gcloud compute ssh --zone "<zone>" "eval-nfs" --project "<project>"`.  
+Google will ask you to make a SSH password; make one that you can remember.
 
 ### Install NFS server
 On the VM, run the following commands:
@@ -150,9 +151,8 @@ We can connect this machine to the NFS server we set up earlier. Replace `<eval-
 sudo apt install -y nfs-common
 sudo mkdir /mnt/nfs
 sudo mount -t nfs -o vers=4 -o resvport <eval-nfs-ip>:/share /mnt/nfs
-sudo mount -t nfs -o vers=4 -o resvport 10.128.0.3:/share /mnt/nfs
 mkdir /mnt/nfs/tmp
-echo "10.128.0.3:/share               /mnt/nfs      nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=1800 0 0" | sudo tee -a /etc/fstab
+echo "<eval-nfs-ip>:/share               /mnt/nfs      nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=1800 0 0" | sudo tee -a /etc/fstab
 ```
 
 
