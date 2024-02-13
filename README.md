@@ -1,16 +1,3 @@
-# How to use this repository
-
-This repository contains the implementations of various state machine replication protocols in both Scala and Dedalus. It was initially forked from [frankenpaxos](https://github.com/mwhittaker/frankenpaxos) by Michael Whittaker.
-
-Refer to the following on how to use this codebase:
-- [Setup](SETUP.md)
-- [Protocols](PROTOCOLS.md)
-- [It doesn't work! (FAQ)](FAQ.md)
-
-Although most of the example benchmark scripts in this repository are located in `benchmarks/vldb24`, they are not for the VLDB '24 submission. The folder was named after our first (rejected) submission and has been modified since.
-
-This repository contains the experiments and technical reports for the following projects.
-
 ## Optimizing Distributed Protocols with Query Rewrites
 David C. Y. Chu, Rithvik Panchapakesan, Shadaj Laddad, Lucky Katahanas, Chris Liu, Kaushik Shivakumar, Natacha Crooks, Joseph M. Hellerstein, Heidi Howard  
 _SIGMOD '24_  
@@ -19,3 +6,13 @@ _SIGMOD '24_
 ## Bigger, not Badder: Safely Scaling Byzantine Protocols
 David C. Y. Chu, Chris Liu, Natacha Crooks, Joseph M. Hellerstein, Heidi Howard  
 Submitted to _PaPoC '24_
+
+---
+This repository contains the implementations of various state machine replication protocols in both Scala and Dedalus. It was initially forked from [frankenpaxos](https://github.com/mwhittaker/frankenpaxos) by Michael Whittaker.
+
+Refer to the following on how to use this codebase:
+- [Setup](SETUP.md)
+- [Protocols](PROTOCOLS.md)
+- [It doesn't work! (FAQ)](FAQ.md)
+
+Although most of the example benchmark scripts in this repository are located in `benchmarks/vldb24`, they are not for the VLDB '24 submission. The folder was named after our first (rejected) submission and has been modified since.
