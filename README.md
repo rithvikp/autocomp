@@ -5,6 +5,7 @@ _SIGMOD '24_
 
 ## Bigger, not Badder: Safely Scaling Byzantine Protocols
 David C. Y. Chu, Chris Liu, Natacha Crooks, Joseph M. Hellerstein, Heidi Howard  
+_PaPoC '24_  
 [`Paper`](https://github.com/rithvikp/autocomp/blob/master/benchmarks/vldb24/Evil_Serverless_Consensus__PaPoC_2024.pdf)
 
 ---
