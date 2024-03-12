@@ -5,7 +5,7 @@ _SIGMOD '24_
 
 ## Bigger, not Badder: Safely Scaling Byzantine Protocols
 David C. Y. Chu, Chris Liu, Natacha Crooks, Joseph M. Hellerstein, Heidi Howard  
-Submitted to _PaPoC '24_
+[`Paper`](https://github.com/rithvikp/autocomp/blob/master/benchmarks/vldb24/Evil_Serverless_Consensus__PaPoC_2024.pdf)
 
 ---
 This repository contains the implementations of various state machine replication protocols in both Scala and Dedalus. It was initially forked from [frankenpaxos](https://github.com/mwhittaker/frankenpaxos) by Michael Whittaker.
