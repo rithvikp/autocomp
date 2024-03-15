@@ -3,6 +3,8 @@ import matplotlib
 matplotlib.use('pdf')
 font = {'size': 16}
 matplotlib.rc('font', **font)
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['ps.fonttype'] = 42
 
 from typing import Any, List
 import argparse
