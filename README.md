@@ -1,4 +1,4 @@
-## Optimizing Distributed Protocols with Query Rewrites
+## [Optimizing Distributed Protocols with Query Rewrites](https://dl.acm.org/doi/pdf/10.1145/3639257)
 David C. Y. Chu, Rithvik Panchapakesan, Shadaj Laddad, Lucky Katahanas, Chris Liu, Kaushik Shivakumar, Natacha Crooks, Joseph M. Hellerstein, Heidi Howard  
 _SIGMOD '24_  
 [`Technical Report`](https://github.com/rithvikp/autocomp/blob/master/benchmarks/vldb24/Automatic_Compartmentalization_tr.pdf)
