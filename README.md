@@ -1,7 +1,7 @@
 ## [Optimizing Distributed Protocols with Query Rewrites](https://dl.acm.org/doi/pdf/10.1145/3639257)
 David C. Y. Chu, Rithvik Panchapakesan, Shadaj Laddad, Lucky Katahanas, Chris Liu, Kaushik Shivakumar, Natacha Crooks, Joseph M. Hellerstein, Heidi Howard  
 _SIGMOD '24_  
-[`Technical Report`](https://github.com/rithvikp/autocomp/blob/master/benchmarks/vldb24/Automatic_Compartmentalization_tr.pdf)
+[`Technical Report`](https://arxiv.org/abs/2404.01593)
 
 ## Bigger, not Badder: Safely Scaling Byzantine Protocols
 David C. Y. Chu, Chris Liu, Natacha Crooks, Joseph M. Hellerstein, Heidi Howard  
