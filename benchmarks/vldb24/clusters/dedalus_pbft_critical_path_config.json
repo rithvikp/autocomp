@@ -16,7 +16,7 @@
         },
         "pbft_replicas": {
             "type": "hydroflow",
-            "rust_example": "pbft"
+            "rust_example": "pbft_critical_path"
         },
         "replicas": {
             "type": "scala"

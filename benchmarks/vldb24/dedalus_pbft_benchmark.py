@@ -1,7 +1,7 @@
-from benchmarks.pbft_critical_path.pbft_critical_path import *
+from benchmarks.pbft.pbft import *
 
 def main(args) -> None:
-    class Suite(DedalusPBFTCriticalPathSuite):
+    class Suite(DedalusPBFTSuite):
         def __init__(self, args) -> None:
             self._args = args
             super().__init__()
@@ -22,6 +22,7 @@ def main(args) -> None:
             return [
                 Input(
                     f = 1,
+                    k = 1000,
                     num_client_procs = num_client_procs,
                     num_warmup_clients_per_proc = num_clients_per_proc,
                     num_clients_per_proc = num_clients_per_proc,
@@ -115,6 +116,7 @@ def main(args) -> None:
         def summary(self, input: Input, output: Output) -> str:
             return str({
                 'f': input.f,
+                'k': input.k,
                 'value_size': input.workload,
                 'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
@@ -128,7 +130,7 @@ def main(args) -> None:
 
     suite = Suite(args)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'pbft_critical_path_lt_dedalus') as dir:
+                                  'pbft_lt_dedalus') as dir:
         suite.run_suite(dir)
 
 
