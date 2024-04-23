@@ -76,6 +76,8 @@ object ReplicaMain extends App {
       .optionAction((x, o) => o.copy(connectToLeader = x))
     opt[Boolean]("options.bft")
       .optionAction((x, o) => o.copy(bft = x))
+    // opt[Boolean]("options.fullBft")
+    //   .optionAction((x, o) => o.copy(fullBft = x))
   }
 
   // Parse flags.

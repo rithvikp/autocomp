@@ -61,6 +61,7 @@ case class ReplicaOptions(
     measureLatencies: Boolean,
     connectToLeader: Boolean,
     // True if the replica needs to verify the signature, sign, and send every message to the client
+    // fullBft: Boolean,
     bft: Boolean
 )
 
@@ -75,6 +76,7 @@ object ReplicaOptions {
     unsafeDontRecover = false,
     measureLatencies = true,
     connectToLeader = true,
+    // fullBft = false,
     bft = false
   )
 }

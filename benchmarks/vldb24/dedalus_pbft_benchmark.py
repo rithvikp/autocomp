@@ -93,6 +93,7 @@ def main(args) -> None:
                     ),
                     client_log_level = args.log_level,
                     bft = True,
+                    # full_bft = True,
                 )
 
                 for value_size in [16]
@@ -125,6 +126,7 @@ def main(args) -> None:
                 'write.latency.median_ms': f'{output.write_output.latency.median_ms:.6}',
                 'write.start_throughput_1s.p90': f'{output.write_output.start_throughput_1s.p90:.8}',
                 'bft': input.bft,
+                # 'full_bft': input.full_bft,
             })
 
 

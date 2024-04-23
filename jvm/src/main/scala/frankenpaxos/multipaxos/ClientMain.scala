@@ -165,6 +165,8 @@ object ClientMain extends App {
       .optionAction((x, o) => o.copy(flushReadsEveryN = x))
     opt[Boolean]("options.bft")
       .optionAction((x, o) => o.copy(bft = x))
+    // opt[Boolean]("options.fullBft")
+    //   .optionAction((x, o) => o.copy(fullBft = x))
   }
 
   val flags: Flags = parser.parse(args, Flags()) match {

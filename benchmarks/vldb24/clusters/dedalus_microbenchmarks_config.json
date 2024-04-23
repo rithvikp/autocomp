@@ -8,6 +8,6 @@
         "hydroflow_image": "worker-image",
         "zone": "us-central1-a",
         "vpc": "eval-network",
-        "user": "davidchu"
+        "user": "doge"
     }
 }

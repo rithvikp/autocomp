@@ -61,7 +61,9 @@ case class ClientOptions(
     flushReadsEveryN: Int,
     measureLatencies: Boolean,
     // True if the client needs to create digests, sign it, and wait for f+1 replicas (with signed messages) to confirm
-    bft: Boolean
+    bft: Boolean,
+    // True if the client needs to create full request messages with digest/identifier/timestamp, sign it, and wait for f+1 replicas (with signed messages) to confirm
+    // fullBft: Boolean
 )
 
 @JSExportAll
@@ -77,6 +79,7 @@ object ClientOptions {
     flushWritesEveryN = 1,
     flushReadsEveryN = 1,
     measureLatencies = true,
+    // fullBft = false,
     bft = false
   )
 }
@@ -592,12 +595,27 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
   // Sign. Key for each PBFT replica = client<replicaID>
   private def sign(
       digest: Array[Byte],
-      replicaID: Int
+      replicaID: Int,
+      clientTimestamp: Option[Int] = None,
+      clientLocation: Option[Int] = None
   ): Array[Byte] = {
     val mac = Mac.getInstance("hmacSHA256")
     val macKey = s"client$replicaID"
     mac.init(new SecretKeySpec(macKey.getBytes, "hmacSHA256"))
-    mac.doFinal(digest)
+    mac.update(digest)
+    // TODO: paywall this behind a separate options.fullBft to prevent breaking pbft critical path evals
+    if (options.bft && clientTimestamp.isDefined && clientLocation.isDefined) {
+      // Convert Int values to byte arrays
+      val timestampBytes: Array[Byte] = ByteBuffer.allocate(4).putInt(clientTimestamp.get).array()
+      val locationBytes: Array[Byte] = ByteBuffer.allocate(4).putInt(clientLocation.get).array()
+
+      // Update the mac with byte arrays
+      mac.update(timestampBytes)
+      mac.update(locationBytes)
+    } else if (options.bft && !(clientTimestamp.isDefined && clientLocation.isDefined)) {
+      throw new Exception("clientTimestamp and clientLocation necessary for full BFT client signature")
+    }
+    mac.doFinal()
   }
 
   private def writeImpl(
@@ -626,10 +644,10 @@ class Client[Transport <: frankenpaxos.Transport[Transport]](
                                   clientPseudonym = pseudonym,
                                   clientId = id),
             command = ByteString.copyFrom(command),
-            signature0 = Some(ByteString.copyFrom(sign(digest, 0))),
-            signature1 = Some(ByteString.copyFrom(sign(digest, 1))),
-            signature2 = Some(ByteString.copyFrom(sign(digest, 2))),
-            signature3 = Some(ByteString.copyFrom(sign(digest, 3))),
+            signature0 = Some(ByteString.copyFrom(sign(digest, 0, id, pseudonym))),
+            signature1 = Some(ByteString.copyFrom(sign(digest, 1, id, pseudonym))),
+            signature2 = Some(ByteString.copyFrom(sign(digest, 2, id, pseudonym))),
+            signature3 = Some(ByteString.copyFrom(sign(digest, 3, id, pseudonym))),
             digest = Some(ByteString.copyFrom(digest))
           )
         } else {

@@ -73,6 +73,7 @@ class Input(NamedTuple):
     client_jvm_heap_size: str
     replica_jvm_heap_size: str
     bft: bool
+    # full_bft: bool
 
     # Benchmark parameters. ####################################################
     measurement_group_size: int
@@ -209,6 +210,10 @@ class DedalusPBFTSuite(benchmark.Suite[Input, Output]):
                     str(i),
                     '--pbft_replica.f',
                     str(input.f),
+                    '--pbft_replica.k',
+                    str(input.k),
+                    '--pbft_replica.num_pbft_replicas',
+                    str(input.num_pbft_replicas),
                     '--prometheus-host',
                     pbft_replica.host.ip(),
                     '--prometheus-port',
@@ -299,6 +304,8 @@ class DedalusPBFTSuite(benchmark.Suite[Input, Output]):
                     str(False),
                     '--options.bft',
                     f'{input.bft}',
+                    # '--options.fullBft',
+                    # f'{input.full_bft}',
                     '--receive_addrs',
                     ','.join([str(x) for x in receive_endpoints[i]]),
                 ],
@@ -437,6 +444,8 @@ class DedalusPBFTSuite(benchmark.Suite[Input, Output]):
                     f'{input.client_options.flush_reads_every_n}',
                     '--options.bft',
                     f'{input.bft}',
+                    # '--options.fullBft',
+                    # f'{input.full_bft}',
                     # This is needed because Scala clients don't usually setup channels with every
                     # pbft_replica, but dedalus requires that.
                     '--receive_addrs',
