@@ -347,6 +347,7 @@ pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>
 
 # EDBs created for this protocol  
 .input SAFETY_QUORUM `repeat_iter([(2*f+1,),])` 
+.input FULL_QUORUM `repeat_iter([(3*f+1,),])` 
 .input WATERMARK_WIDTH `repeat_iter([(k as u32,),])`    
 .input NUM_REPLICAS `repeat_iter([(num_replicas as u32,),])`
 
@@ -476,8 +477,8 @@ prepareOut@i(v, n, d, l) :~ prepareOutbox(v, n, d, l), !prepareSent(v, n, d, l),
 # logic to accept prepare messages
 prepareLog(v, n, d, i, sig) :+ prepareVerifiedIn(v, n, d, i, sig), !attemptingViewChange(_), currentView(v), lowWatermark(h), (h < n), highWatermark(H), (n < H)
 
-# conditional persist for garbage collection based on low watermark
-prepareLog(v, n, d, i, sig) :+ prepareLog(v, n, d, i, sig), lowWatermark(h), (h < n)
+# conditional persist for garbage collection based on low watermark and full quorum
+prepareLog(v, n, d, i, sig) :+ prepareLog(v, n, d, i, sig), lowWatermark(h), (h < n), !fullCommitCert(d, v, n)
 
 ########## end preprepare + prepare
 
@@ -489,6 +490,7 @@ prepareCertSize(v, n, d, count(i)) :- prepareLog(v, n, d, i, _)
 
 # has a preprepare and 2f + 1 matching prepares
 digestPrepared(d, v, n) :- preprepareLog(v, n, d, _), prepareCertSize(v, n, d, certSize), SAFETY_QUORUM(x), (certSize >= x)
+fullPrepareCert(d, v, n) :- prepareCertSize(v, n, d, certSize), FULL_QUORUM(x), (certSize >= x)
 
 # additionally has the original request logged
 prepared(d, v, n) :- requestLog(commandId, o, clientTimestamp, c, clientSig, d), digestPrepared(d, v, n)
@@ -502,8 +504,8 @@ commitOut@i(v, n, d, l) :~ commitOutbox(v, n, d, l), !commitSent(v, n, d, l), re
 # logic to accept commit messages
 commitLog(v, n, d, i, sig) :+ commitVerifiedIn(v, n, d, i, sig), !attemptingViewChange(_), currentView(v), lowWatermark(h), (h < n), highWatermark(H), (n < H)
 
-# conditional persist for garbage collection based on low watermark
-commitLog(v, n, d, i, sig) :+ commitLog(v, n, d, i, sig), lowWatermark(h), (h < n)
+# conditional persist for garbage collection based on low watermark and full quorum
+commitLog(v, n, d, i, sig) :+ commitLog(v, n, d, i, sig), lowWatermark(h), (h < n), !fullCommitCert(d, v, n)
 
 ########## end message commit
 
@@ -515,6 +517,9 @@ commitCertSize(v, n, d, count(i)) :- commitLog(v, n, d, i, _)
 
 # satisfies prepared and also has 2f + 1 commit messages
 committedLocal(d, v, n) :- prepared(d, v, n), commitCertSize(v, n, d, certSize), SAFETY_QUORUM(x), (certSize >= x)
+
+# satisfies prepared and also has 3f + 1 commit messages
+fullCommitCert(d, v, n) :- commitCertSize(v, n, d, certSize), FULL_QUORUM(x), (certSize >= x)
 
 # execute command after it satisfies committedLocal
 # assume that the state machine can execute requests sequentially based on the seq nums provided
