@@ -22,7 +22,7 @@ def main(args) -> None:
             return [
                 Input(
                     f = 1,
-                    k = 1000,
+                    k = 10 ** 6,
                     num_client_procs = num_client_procs,
                     num_warmup_clients_per_proc = num_clients_per_proc,
                     num_clients_per_proc = num_clients_per_proc,

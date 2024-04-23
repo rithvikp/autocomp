@@ -379,9 +379,10 @@ pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>
 
 // .output clientTimestampReplyByClient `for_each(|(c, clientTimestamp):(u32, u32)| println!("(c, clientTimstamp): ({:?}, {:?})", c, clientTimestamp))`
 // .output clientStdout `for_each(|(digest,):(Rc<Vec<u8>>,)| println!("(digest): ({:?})", digest))`
-.output lowWatermark `for_each(|(h,):(u32,)| println!("(h): ({:?})", h))`
-.output replicaStdout `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("(v, n, d): ({:?}, {:?}, {:?})", v, n, d))`
-.output onlyOneValidPiggybackedPreprepareByEmptyViewAndSeqNum `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("(v, n, d): ({:?}, {:?}, {:?})", v, n, d[0]))`
+// .output lowWatermark `for_each(|(h,):(u32,)| println!("(h): ({:?})", h))`
+.output indexedOutboundPiggybackedPreprepare `for_each(|(d, i):(Rc<Vec<u8>>, u32)| println!(">>>(d, i): ({:?}, {:?})", d[0], i))`
+.output replicaStdout `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("received preprep (v, n, d): ({:?}, {:?}, {:?})", v, n, d))`
+.output onlyOneValidPiggybackedPreprepareByEmptyViewAndSeqNum `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("chose preprep (v, n, d): ({:?}, {:?}, {:?})", v, n, d[0]))`
 
 ########## end IDB definitions
 
@@ -392,7 +393,7 @@ pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>
 currentView(v) :- ZERO(v)
 viewPrimary(v, v % x) :- currentView(v), NUM_REPLICAS(x)
 
-lowWatermark(h - 1) :- ZERO(h)
+lowWatermark(h) :- ZERO(h)
 highWatermark(h + k) :- lowWatermark(h), WATERMARK_WIDTH(k)
 
 attemptingViewChange(v) :- ZERO(v), (v != v)
@@ -436,10 +437,11 @@ takenSeqNum(n - 1) :+ nextOpenSeqNum(n), !outboundPiggybackedPreprepareBatch(_)
 lastTakenSeqNum(max(n)) :- takenSeqNum(n)
 nextOpenSeqNum(n + 1) :- lastTakenSeqNum(n)
 
-piggybackedPreprepareOutbox(v, n + i, d, commandId, o, clientTimestamp, c, clientSig) :- requestLog(commandId, o, clientTimestamp, c, clientSig, d), outboundPiggybackedPreprepareBatch(d), indexedOutboundPiggybackedPreprepare(d, i), currentView(v), nextOpenSeqNum(n)
+piggybackedPreprepareOutbox(v, n + i, d, commandId, o, clientTimestamp, c, clientSig) :- requestLog(commandId, o, clientTimestamp, c, clientSig, d), outboundPiggybackedPreprepareBatch(d), indexedOutboundPiggybackedPreprepare(d, i), currentView(v), nextOpenSeqNum(n), !preprepareExists(v, d)
+replicaStdout(v, n, d) :- piggybackedPreprepareVerifiedIn(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig)
 
 preprepareExists(v, d) :- preprepareLog(v, _, d, _), currentView(v)
-preprepareExists(v, d) :+ prepareSent(v, _, d, _), currentView(v)
+preprepareExists(v, d) :+ piggybackedPreprepareOutbox(v, _, d, _, _, _, _, _), currentView(v)
 preprepareExists(v, d) :+ preprepareExists(v, d), currentView(v)
 
 piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig) :+ piggybackedPreprepareOutbox(v, n, d, commandId, o, clientTimestamp, c, clientSig)
@@ -450,8 +452,6 @@ piggybackedPreprepareOut@i(v, n, d, commandId, o, clientTimestamp, c, clientSig)
 # gives priority to preprepares taken from the O set, which are added to the preprepareLog in the same timestep as accepting the new-view message
 # preprepares taken in not from new-view messages have to wait a timestep to get added
 onlyOneValidPiggybackedPreprepareByEmptyViewAndSeqNum(v, n, choose(d)) :+ piggybackedPreprepareVerifiedIn(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig), !attemptingViewChange(_), currentView(v), !preprepareLog(v, n, _, _), lowWatermark(h), (h < n), highWatermark(H), (n < H)
-
-replicaStdout(v, n, d) :- piggybackedPreprepareVerifiedIn(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig)
 
 # persisted into the next t' as long as (v, n) is empty during t
 piggybackedPrepreparePurgatoryLog(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig) :+ piggybackedPreprepareVerifiedIn(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig), !preprepareLog(v, n, _, _)
@@ -518,7 +518,8 @@ committedLocal(d, v, n) :- prepared(d, v, n), commitCertSize(v, n, d, certSize),
 
 # execute command after it satisfies committedLocal
 # assume that the state machine can execute requests sequentially based on the seq nums provided
-executeCommandOutbox(d, commandId, o, n) :- committedLocal(d, _, n), requestLog(commandId, o, _, _, _, d)
+# subtract one from seq num because seq nums are one-indexed due to them being unsigned and zero being reserved
+executeCommandOutbox(d, commandId, o, n - 1) :- committedLocal(d, _, n), requestLog(commandId, o, _, _, _, d)
 executeCommandSent(d, commandId, o, n) :+ executeCommandOutbox(d, commandId, o, n)
 executeCommandSent(d, commandId, o, n) :+ executeCommandSent(d, commandId, o, n)
 executeCommandOut@r(d, commandId, o, n) :~ executeCommandOutbox(d, commandId, o, n), !executeCommandSent(d, commandId, o, n), STATE_MACHINE(r)
