@@ -380,13 +380,17 @@ pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>
 .input committedLocal `null::<(Rc<Vec<u8>>, u32, u32,)>()`
 .input currentView `null::<(u32,)>()`
 
-// .output clientTimestampReplyByClient `for_each(|(c, client_timestamp):(u32, u32)| println!("(c, client_timestamp): ({:?}, {:?})", c, client_timestamp))`
+// .output highestClientTimestampReplyByClient `for_each(|(c, client_timestamp):(u32, u32)| println!("(c, client_timestamp): ({:?}, {:?})", c, client_timestamp))`
 // .output clientStdout `for_each(|(digest,):(Rc<Vec<u8>>,)| println!("(digest): ({:?})", digest))`
 // .output lowWatermark `for_each(|(h,):(u32,)| println!("(h): ({:?})", h))`
 
 // .output indexedOutboundPiggybackedPreprepare `for_each(|(d, i):(Rc<Vec<u8>>, u32)| println!(">>>(d, i): ({:?}, {:?})", d[0], i))`
-// .output replicaStdout `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("received preprep (v, n, d): ({:?}, {:?}, {:?})", v, n, d))`
 // .output onlyOneValidPiggybackedPreprepareByEmptyViewAndSeqNum `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("chose preprep (v, n, d): ({:?}, {:?}, {:?})", v, n, d[0]))`
+
+// .output replicaStdout `for_each(|(d, commandId, o, n):(Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, u32)| println!("could have executed (d, commandId, o, n): ({:?}, {:?}, {:?}, {:?})", d, commandId, o, n))`
+// .output fullCommitCert `for_each(|(d, v, n):(Rc<Vec<u8>>, u32, u32)| println!("full commit cert on (v, n, d): ({:?}, {:?}, {:?})", v, n, d[0]))`
+// .output persistedFC `for_each(|(d, v, n):(Rc<Vec<u8>>, u32, u32)| println!("previously fc'ed (v, n, d): ({:?}, {:?}, {:?})", v, n, d[0]))`
+// .output requestLog `for_each(|(commandId, o, clientTimestamp, c, clientSig, d):(Rc<Vec<u8>>, Rc<Vec<u8>>, u32, u32, Rc<Vec<Vec<u8>>>, Rc<Vec<u8>>)| println!("req logged (o, clientTimestamp, c, d): ({:?}, {:?}, {:?}, {:?})", o[0], clientTimestamp, c, d[0]))`
 
 ########## end IDB definitions
 
@@ -412,8 +416,9 @@ requestLog(commandId, o, clientTimestamp, c, clientSig, d) :+ requestVerifiedIn(
 requestLog(commandId, o, clientTimestamp, c, clientSig, d) :- piggybackedPreprepareLog(_, _, d, _, commandId, o, clientTimestamp, c, clientSig)
 
 # conditional persist for garbage collection based on highest clientTimestamp replied to
-requestLog(commandId, o, clientTimestamp, c, sig, d) :+ requestLog(commandId, o, clientTimestamp, c, sig, d), highestClientTimestampReplyByClient(c, maxTimestamp), (clientTimestamp >= maxTimestamp) # garbage collect requests with a strictly lower timestamp
-requestLog(commandId, o, clientTimestamp, c, sig, d) :+ requestLog(commandId, o, clientTimestamp, c, sig, d), !highestClientTimestampReplyByClient(c, _) # first request from the client, assumes clients don't send new requests until previous has completed
+# TODO: undo dirty fullCommitCery performance patch
+requestLog(commandId, o, clientTimestamp, c, sig, d) :+ requestLog(commandId, o, clientTimestamp, c, sig, d), highestClientTimestampReplyByClient(c, maxTimestamp), (clientTimestamp >= maxTimestamp), !fullCommitCert(d, v, n) # garbage collect requests with a strictly lower timestamp
+requestLog(commandId, o, clientTimestamp, c, sig, d) :+ requestLog(commandId, o, clientTimestamp, c, sig, d), !highestClientTimestampReplyByClient(c, _), !fullCommitCert(d, v, n) # first request from the client, assumes clients don't send new requests until previous has completed
 
 ########## end client requests
 
@@ -422,6 +427,7 @@ requestLog(commandId, o, clientTimestamp, c, sig, d) :+ requestLog(commandId, o,
 ########## preprepare + prepare
 
 # send preprepares for any request in the log that has no preprepare in the current view and isn't already committed
+# need to garbage collect requestLog at latest concurrently with preprepareExists to prevent redoing the consensus process for requests
 outboundPiggybackedPreprepareBatch(d) :- requestLog(commandId, o, clientTimestamp, c, clientSig, d), highestClientTimestampReplyByClient(c, maxTimestamp), (clientTimestamp > maxTimestamp), currentView(v), viewPrimary(v, r), ID(r), !preprepareExists(v, d), !committedLocal(d, _, _)
 outboundPiggybackedPreprepareBatch(d) :- requestLog(commandId, o, clientTimestamp, c, clientSig, d), !highestClientTimestampReplyByClient(c, _), currentView(v), viewPrimary(v, r), ID(r), !preprepareExists(v, d), !committedLocal(d, _, _)
 
@@ -443,7 +449,7 @@ piggybackedPreprepareOutbox(v, n + i, d, commandId, o, clientTimestamp, c, clien
 
 preprepareExists(v, d) :- preprepareLog(v, _, d, _), currentView(v)
 preprepareExists(v, d) :+ piggybackedPreprepareOutbox(v, _, d, _, _, _, _, _), currentView(v)
-preprepareExists(v, d) :+ preprepareExists(v, d), currentView(v)
+preprepareExists(v, d) :+ preprepareExists(v, d), currentView(v), !fullCommitCert(d, v, n)
 
 piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig) :+ piggybackedPreprepareOutbox(v, n, d, commandId, o, clientTimestamp, c, clientSig)
 piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig) :+ piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig), !fullCommitCert(d, v, n)
@@ -460,13 +466,13 @@ piggybackedPrepreparePurgatoryLog(v, n, d, sig, commandId, o, clientTimestamp, c
 # logic to accept preprepare messages
 piggybackedPreprepareLog(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig) :- piggybackedPrepreparePurgatoryLog(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig), onlyOneValidPiggybackedPreprepareByEmptyViewAndSeqNum(v, n, d)
 
-# conditional persist for garbage collection based on low watermark
-piggybackedPreprepareLog(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig) :+ piggybackedPreprepareLog(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig), lowWatermark(h), (h < n)
+# conditional persist for garbage collection based on low watermark and full quorum
+piggybackedPreprepareLog(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig) :+ piggybackedPreprepareLog(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig), lowWatermark(h), (h < n), !fullCommitCert(d, v, n)
 
 preprepareLog(v, n, d, sig) :- piggybackedPreprepareLog(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig)
 
-# conditional persist for garbage collection based on low watermark
-preprepareLog(v, n, d, sig) :+ preprepareLog(v, n, d, sig), lowWatermark(h), (h < n)
+# conditional persist for garbage collection based on low watermark and full quorum
+preprepareLog(v, n, d, sig) :+ preprepareLog(v, n, d, sig), lowWatermark(h), (h < n), !fullCommitCert(d, v, n)
 
 # send prepares after accepting a preprepare
 prepareOutbox(v, n, d, l) :- preprepareLog(v, n, d, _), ID(l)
@@ -496,10 +502,7 @@ fullPrepareCert(d, v, n) :- prepareCertSize(v, n, d, certSize), FULL_QUORUM(x), 
 // prepared(d, v, n) :- requestLog(commandId, o, clientTimestamp, c, clientSig, d), digestPrepared(d, v, n)
 
 # send commits after a message satisfies prepared predicate (or fullPrepareCert as a temporary performance patch)
-commitOutbox(v, n, d, l) :- fullPrepareCert(d, v, n), ID(l)
-commitSent(v, n, d, l) :+ commitOutbox(v, n, d, l)
-commitSent(v, n, d, l) :+ commitSent(v, n, d, l), !fullPrepareCert(d, v, n)
-commitOut@i(v, n, d, l) :~ commitOutbox(v, n, d, l), !commitSent(v, n, d, l), replicas(i)
+commitOut@i(v, n, d, l) :~ fullPrepareCert(d, v, n), ID(l), replicas(i)
 
 # logic to accept commit messages
 commitLog(v, n, d, i, sig) :+ commitVerifiedIn(v, n, d, i, sig), !attemptingViewChange(_), currentView(v), lowWatermark(h), (h < n), highWatermark(H), (n < H)
@@ -524,13 +527,15 @@ fullCommitCert(d, v, n) :- commitCertSize(v, n, d, certSize), FULL_QUORUM(x), (c
 # execute command after it satisfies committedLocal (or fullCommitCert as a temporary performance patch)
 # assume that the state machine can execute requests sequentially based on the seq nums provided
 # subtract one from seq num because seq nums are one-indexed due to them being unsigned and zero being reserved
-executeCommandOutbox(d, commandId, o, n - 1) :- fullCommitCert(d, _, n), requestLog(commandId, o, _, _, _, d)
-executeCommandSent(d, commandId, o, n) :+ executeCommandOutbox(d, commandId, o, n)
-executeCommandSent(d, commandId, o, n) :+ executeCommandSent(d, commandId, o, n), !fullCommitCert(d, v, n)
-executeCommandOut@r(d, commandId, o, n) :~ executeCommandOutbox(d, commandId, o, n), !executeCommandSent(d, commandId, o, n), STATE_MACHINE(r)
+executeCommandOut@r(d, commandId, o, n - 1) :~ fullCommitCert(d, _, n), requestLog(commandId, o, _, _, _, d), STATE_MACHINE(r)
 
-clientTimestampReplyByClient(c, clientTimestamp) :- executeCommandOutbox(d, commandId, _, _), requestLog(commandId, _, clientTimestamp, c, _, d)
-highestClientTimestampReplyByClient(c, max(clientTimestamp)) :- clientTimestampReplyByClient(c, clientTimestamp)
+// replicaStdout(d, commandId, o, n) :- persistedFC(d, _, n), requestLog(commandId, o, _, _, _, d)
+// persistedFC(d, v, n) :- fullCommitCert(d, v, n)
+// persistedFC(d, v, n) :+ persistedFC(d, v, n)
+
+clientTimestampReplyByClient(c, clientTimestamp) :- fullCommitCert(d, _, n), requestLog(commandId, _, clientTimestamp, c, _, d)
+clientTimestampReplyByClient(c, clientTimestamp) :- highestClientTimestampReplyByClient(c, clientTimestamp)
+highestClientTimestampReplyByClient(c, max(clientTimestamp)) :+ clientTimestampReplyByClient(c, clientTimestamp)
 
 ########## end command execution
     "#
