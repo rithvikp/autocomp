@@ -113,7 +113,9 @@ fn serialize(digest: Rc<Vec<u8>>, command_id_buf: Rc<Vec<u8>>, command: Rc<Vec<u
             },
         )),
     };
-    println!("Sending to replica payload {:?} seq_num {:?}", command[0], seq_num);
+    if seq_num % 100 == 0 {
+        println!("Sending to replica payload {:?} seq_num {:?}", command[0], seq_num);
+    }
 
     let mut buf = Vec::new();
     out.encode(&mut buf).unwrap();
@@ -134,7 +136,7 @@ fn get_mac(replica_1_id: u32, replica_2_id: u32) -> Hmac<Sha256> {
 // piggybackedPreprepare (v = view, n = seq num, d = hash digest of m, sig = primary signature of (v, n, d), o = command operation, clientTimestamp = client timestamp, c = client, clientSig = client signature of (o, clientTimestamp, c))
 fn create_piggybacked_preprepare(view: u32, seq_num: u32, digest: Rc<Vec<u8>>, command_id: Rc<Vec<u8>>, command: Rc<Vec<u8>>, client_timestamp: u32, client_location: u32, sigc: Rc<Vec<Vec<u8>>>, receiver: u32) -> (u32, u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, u32, u32, Rc<Vec<Vec<u8>>>) {
     // ASK?: is the index 0 for digest/command/sigc tied to the previous assumption that only replica 0 is the primary?
-    println!("Creating piggybacked preprepare: ((v, n, d): ({:?}, {:?}, {:?}), (o, c_t, c): ({:?}, {:?}, {:?}), sigc: {:?}, Receiver: {:?})", view, seq_num, digest[0], command[0], client_timestamp, client_location, sigc[0], receiver);
+    // println!("Creating piggybacked preprepare: ((v, n, d): ({:?}, {:?}, {:?}), (o, c_t, c): ({:?}, {:?}, {:?}), sigc: {:?}, Receiver: {:?})", view, seq_num, digest[0], command[0], client_timestamp, client_location, sigc[0], receiver);
     let primary = get_view_primary(view);
     let mut mac = get_mac(primary, receiver);
     mac.update(&view.to_be_bytes());
@@ -147,7 +149,7 @@ fn create_piggybacked_preprepare(view: u32, seq_num: u32, digest: Rc<Vec<u8>>, c
 
 fn unwrap_piggybacked_preprepare(msg: (u32, u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, u32, u32, Rc<Vec<Vec<u8>>>), receiver: u32) -> Option<(u32, u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Vec<u8>>, u32, u32, Rc<Vec<Vec<u8>>>)> {
     let (view, seq_num, digest, sig, command_id, command, client_timestamp, client_location, client_sig) = msg;
-    println!("Unwrapping piggybacked preprepare: ((v, n, d): ({:?}, {:?}, {:?}), (o, c_t, c): ({:?}, {:?}, {:?}), sig: {:?}, sigc: {:?}, Receiver: {:?})", view, seq_num, digest[0], command[0], client_timestamp, client_location, sig[0], client_sig[0], receiver);
+    // println!("Unwrapping piggybacked preprepare: ((v, n, d): ({:?}, {:?}, {:?}), (o, c_t, c): ({:?}, {:?}, {:?}), sig: {:?}, sigc: {:?}, Receiver: {:?})", view, seq_num, digest[0], command[0], client_timestamp, client_location, sig[0], client_sig[0], receiver);
 
     // Verify the pre-prepare signature. Note: sender = 0 because only the leader (id = 0) sends pre-prepares
     let primary = get_view_primary(view);
@@ -186,7 +188,7 @@ fn unwrap_piggybacked_preprepare(msg: (u32, u32, Rc<Vec<u8>>, Rc<Vec<u8>>, Rc<Ve
 
 // preprepare (v = view, n = seq num, d = hash digest of m, l = sender, sig = sender signature of (v, n, d, l)
 fn create_prepare(view: u32, seq_num: u32, digest: Rc<Vec<u8>>, sender: u32, receiver: u32) -> (u32, u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>) {
-    println!("Creating prepare: ((v, n, d, l): ({:?}, {:?}, {:?}, {:?}), Sender: {:?}, Receiver: {:?})", view, seq_num, digest[0], sender, sender, receiver);
+    // println!("Creating prepare: ((v, n, d, l): ({:?}, {:?}, {:?}, {:?}), Sender: {:?}, Receiver: {:?})", view, seq_num, digest[0], sender, sender, receiver);
     let mut mac = get_mac(sender, receiver);
     mac.update(&view.to_be_bytes());
     mac.update(&seq_num.to_be_bytes());
@@ -199,7 +201,7 @@ fn create_prepare(view: u32, seq_num: u32, digest: Rc<Vec<u8>>, sender: u32, rec
 
 fn unwrap_prepare(msg: (u32, u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
     let (view, seq_num, digest, sender, sig) = msg;
-    println!("Unwrapping prepare: ((v, n, d, l): ({:?}, {:?}, {:?}, {:?}), sig: {:?}, Sender: {:?})", view, seq_num, digest[0], sender, sig[0], sender);
+    // println!("Unwrapping prepare: ((v, n, d, l): ({:?}, {:?}, {:?}, {:?}), sig: {:?}, Sender: {:?})", view, seq_num, digest[0], sender, sig[0], sender);
     let mut mac = get_mac(sender, receiver);
     mac.update(&view.to_be_bytes());
     mac.update(&seq_num.to_be_bytes());
@@ -215,7 +217,7 @@ fn unwrap_prepare(msg: (u32, u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32)
 
 // preprepare (v = view, n = seq num, d = hash digest of m, l = sender, sig = sender signature of (v, n, d, l)
 fn create_commit(view: u32, seq_num: u32, digest: Rc<Vec<u8>>, sender: u32, receiver: u32) -> (u32, u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>) {
-    println!("Creating commit: ((v, n, d, l): ({:?}, {:?}, {:?}, {:?}), Sender: {:?}, Receiver: {:?})", view, seq_num, digest[0], sender, sender, receiver);
+    // println!("Creating commit: ((v, n, d, l): ({:?}, {:?}, {:?}, {:?}), Sender: {:?}, Receiver: {:?})", view, seq_num, digest[0], sender, sender, receiver);
     let mut mac = get_mac(sender, receiver);
     mac.update(&view.to_be_bytes());
     mac.update(&seq_num.to_be_bytes());
@@ -228,7 +230,7 @@ fn create_commit(view: u32, seq_num: u32, digest: Rc<Vec<u8>>, sender: u32, rece
 
 fn unwrap_commit(msg: (u32, u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>), receiver: u32) -> Option<(u32, u32, Rc<Vec<u8>>, u32, Rc<Vec<u8>>)> {
     let (view, seq_num, digest, sender, sig) = msg;
-    println!("Unwrapping commit: ((v, n, d, l): ({:?}, {:?}, {:?}, {:?}), sig: {:?}, Sender: {:?})", view, seq_num, digest[0], sender, sig[0], sender);
+    // println!("Unwrapping commit: ((v, n, d, l): ({:?}, {:?}, {:?}, {:?}), sig: {:?}, Sender: {:?})", view, seq_num, digest[0], sender, sig[0], sender);
     let mut mac = get_mac(sender, receiver);
     mac.update(&view.to_be_bytes());
     mac.update(&seq_num.to_be_bytes());
@@ -378,12 +380,13 @@ pub async fn run(cfg: PBFTReplicaArgs, mut ports: HashMap<String, ServerOrBound>
 .input committedLocal `null::<(Rc<Vec<u8>>, u32, u32,)>()`
 .input currentView `null::<(u32,)>()`
 
-// .output clientTimestampReplyByClient `for_each(|(c, clientTimestamp):(u32, u32)| println!("(c, clientTimstamp): ({:?}, {:?})", c, clientTimestamp))`
+// .output clientTimestampReplyByClient `for_each(|(c, client_timestamp):(u32, u32)| println!("(c, client_timestamp): ({:?}, {:?})", c, client_timestamp))`
 // .output clientStdout `for_each(|(digest,):(Rc<Vec<u8>>,)| println!("(digest): ({:?})", digest))`
 // .output lowWatermark `for_each(|(h,):(u32,)| println!("(h): ({:?})", h))`
-.output indexedOutboundPiggybackedPreprepare `for_each(|(d, i):(Rc<Vec<u8>>, u32)| println!(">>>(d, i): ({:?}, {:?})", d[0], i))`
-.output replicaStdout `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("received preprep (v, n, d): ({:?}, {:?}, {:?})", v, n, d))`
-.output onlyOneValidPiggybackedPreprepareByEmptyViewAndSeqNum `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("chose preprep (v, n, d): ({:?}, {:?}, {:?})", v, n, d[0]))`
+
+// .output indexedOutboundPiggybackedPreprepare `for_each(|(d, i):(Rc<Vec<u8>>, u32)| println!(">>>(d, i): ({:?}, {:?})", d[0], i))`
+// .output replicaStdout `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("received preprep (v, n, d): ({:?}, {:?}, {:?})", v, n, d))`
+// .output onlyOneValidPiggybackedPreprepareByEmptyViewAndSeqNum `for_each(|(v, n, d):(u32, u32, Rc<Vec<u8>>)| println!("chose preprep (v, n, d): ({:?}, {:?}, {:?})", v, n, d[0]))`
 
 ########## end IDB definitions
 
@@ -404,11 +407,9 @@ attemptingViewChange(v) :- ZERO(v), (v != v)
 
 
 ########## client requests
-
-clientStdout(d) :- outboundPiggybackedPreprepareBatch(d)
  
 requestLog(commandId, o, clientTimestamp, c, clientSig, d) :+ requestVerifiedIn(commandId, o, clientTimestamp, c, clientSig, d), !attemptingViewChange(_)
-requestLog(commandId, o, clientTimestamp, c, clientSig, d) :- piggybackedPreprepareLog(_, _, d, sig, commandId, o, clientTimestamp, c, clientSig)
+requestLog(commandId, o, clientTimestamp, c, clientSig, d) :- piggybackedPreprepareLog(_, _, d, _, commandId, o, clientTimestamp, c, clientSig)
 
 # conditional persist for garbage collection based on highest clientTimestamp replied to
 requestLog(commandId, o, clientTimestamp, c, sig, d) :+ requestLog(commandId, o, clientTimestamp, c, sig, d), highestClientTimestampReplyByClient(c, maxTimestamp), (clientTimestamp >= maxTimestamp) # garbage collect requests with a strictly lower timestamp
@@ -439,14 +440,13 @@ lastTakenSeqNum(max(n)) :- takenSeqNum(n)
 nextOpenSeqNum(n + 1) :- lastTakenSeqNum(n)
 
 piggybackedPreprepareOutbox(v, n + i, d, commandId, o, clientTimestamp, c, clientSig) :- requestLog(commandId, o, clientTimestamp, c, clientSig, d), outboundPiggybackedPreprepareBatch(d), indexedOutboundPiggybackedPreprepare(d, i), currentView(v), nextOpenSeqNum(n), !preprepareExists(v, d)
-replicaStdout(v, n, d) :- piggybackedPreprepareVerifiedIn(v, n, d, sig, commandId, o, clientTimestamp, c, clientSig)
 
 preprepareExists(v, d) :- preprepareLog(v, _, d, _), currentView(v)
 preprepareExists(v, d) :+ piggybackedPreprepareOutbox(v, _, d, _, _, _, _, _), currentView(v)
 preprepareExists(v, d) :+ preprepareExists(v, d), currentView(v)
 
 piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig) :+ piggybackedPreprepareOutbox(v, n, d, commandId, o, clientTimestamp, c, clientSig)
-piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig) :+ piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig)
+piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig) :+ piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig), !fullCommitCert(d, v, n)
 piggybackedPreprepareOut@i(v, n, d, commandId, o, clientTimestamp, c, clientSig) :~ piggybackedPreprepareOutbox(v, n, d, commandId, o, clientTimestamp, c, clientSig), !piggybackedPreprepareSent(v, n, d, commandId, o, clientTimestamp, c, clientSig), replicas(i)
 
 # chooses one digest in case multiple concurrent preprepares are received
@@ -471,14 +471,14 @@ preprepareLog(v, n, d, sig) :+ preprepareLog(v, n, d, sig), lowWatermark(h), (h 
 # send prepares after accepting a preprepare
 prepareOutbox(v, n, d, l) :- preprepareLog(v, n, d, _), ID(l)
 prepareSent(v, n, d, l) :+ prepareOutbox(v, n, d, l)
-prepareSent(v, n, d, l) :+ prepareSent(v, n, d, l)
+prepareSent(v, n, d, l) :+ prepareSent(v, n, d, l), !fullCommitCert(d, v, n)
 prepareOut@i(v, n, d, l) :~ prepareOutbox(v, n, d, l), !prepareSent(v, n, d, l), replicas(i)
 
 # logic to accept prepare messages
 prepareLog(v, n, d, i, sig) :+ prepareVerifiedIn(v, n, d, i, sig), !attemptingViewChange(_), currentView(v), lowWatermark(h), (h < n), highWatermark(H), (n < H)
 
 # conditional persist for garbage collection based on low watermark and full quorum
-prepareLog(v, n, d, i, sig) :+ prepareLog(v, n, d, i, sig), lowWatermark(h), (h < n), !fullCommitCert(d, v, n)
+prepareLog(v, n, d, i, sig) :+ prepareLog(v, n, d, i, sig), lowWatermark(h), (h < n), !fullPrepareCert(d, v, n)
 
 ########## end preprepare + prepare
 
@@ -489,16 +489,16 @@ prepareLog(v, n, d, i, sig) :+ prepareLog(v, n, d, i, sig), lowWatermark(h), (h 
 prepareCertSize(v, n, d, count(i)) :- prepareLog(v, n, d, i, _)
 
 # has a preprepare and 2f + 1 matching prepares
-digestPrepared(d, v, n) :- preprepareLog(v, n, d, _), prepareCertSize(v, n, d, certSize), SAFETY_QUORUM(x), (certSize >= x)
+// digestPrepared(d, v, n) :- preprepareLog(v, n, d, _), prepareCertSize(v, n, d, certSize), SAFETY_QUORUM(x), (certSize >= x)
 fullPrepareCert(d, v, n) :- prepareCertSize(v, n, d, certSize), FULL_QUORUM(x), (certSize >= x)
 
 # additionally has the original request logged
-prepared(d, v, n) :- requestLog(commandId, o, clientTimestamp, c, clientSig, d), digestPrepared(d, v, n)
+// prepared(d, v, n) :- requestLog(commandId, o, clientTimestamp, c, clientSig, d), digestPrepared(d, v, n)
 
-# send commits after a message satisfies prepared predicate
-commitOutbox(v, n, d, l) :- prepared(d, v, n), ID(l)
+# send commits after a message satisfies prepared predicate (or fullPrepareCert as a temporary performance patch)
+commitOutbox(v, n, d, l) :- fullPrepareCert(d, v, n), ID(l)
 commitSent(v, n, d, l) :+ commitOutbox(v, n, d, l)
-commitSent(v, n, d, l) :+ commitSent(v, n, d, l)
+commitSent(v, n, d, l) :+ commitSent(v, n, d, l), !fullPrepareCert(d, v, n)
 commitOut@i(v, n, d, l) :~ commitOutbox(v, n, d, l), !commitSent(v, n, d, l), replicas(i)
 
 # logic to accept commit messages
@@ -516,17 +516,17 @@ commitLog(v, n, d, i, sig) :+ commitLog(v, n, d, i, sig), lowWatermark(h), (h < 
 commitCertSize(v, n, d, count(i)) :- commitLog(v, n, d, i, _)
 
 # satisfies prepared and also has 2f + 1 commit messages
-committedLocal(d, v, n) :- prepared(d, v, n), commitCertSize(v, n, d, certSize), SAFETY_QUORUM(x), (certSize >= x)
+// committedLocal(d, v, n) :- prepared(d, v, n), commitCertSize(v, n, d, certSize), SAFETY_QUORUM(x), (certSize >= x)
 
 # satisfies prepared and also has 3f + 1 commit messages
 fullCommitCert(d, v, n) :- commitCertSize(v, n, d, certSize), FULL_QUORUM(x), (certSize >= x)
 
-# execute command after it satisfies committedLocal
+# execute command after it satisfies committedLocal (or fullCommitCert as a temporary performance patch)
 # assume that the state machine can execute requests sequentially based on the seq nums provided
 # subtract one from seq num because seq nums are one-indexed due to them being unsigned and zero being reserved
-executeCommandOutbox(d, commandId, o, n - 1) :- committedLocal(d, _, n), requestLog(commandId, o, _, _, _, d)
+executeCommandOutbox(d, commandId, o, n - 1) :- fullCommitCert(d, _, n), requestLog(commandId, o, _, _, _, d)
 executeCommandSent(d, commandId, o, n) :+ executeCommandOutbox(d, commandId, o, n)
-executeCommandSent(d, commandId, o, n) :+ executeCommandSent(d, commandId, o, n)
+executeCommandSent(d, commandId, o, n) :+ executeCommandSent(d, commandId, o, n), !fullCommitCert(d, v, n)
 executeCommandOut@r(d, commandId, o, n) :~ executeCommandOutbox(d, commandId, o, n), !executeCommandSent(d, commandId, o, n), STATE_MACHINE(r)
 
 clientTimestampReplyByClient(c, clientTimestamp) :- executeCommandOutbox(d, commandId, _, _), requestLog(commandId, _, clientTimestamp, c, _, d)
