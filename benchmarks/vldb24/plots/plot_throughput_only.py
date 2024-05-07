@@ -36,10 +36,12 @@ def output_plot(name, files):
 
 
 def main(args):
+    voting_files = ["voting_lt/3base.csv", "voting_lt/3scale5.csv"]
     twopc_files = ["twopc_lt/fixed_base.csv", "twopc_lt/fixed_auto5.csv"]
     paxos_files = ["multipaxos_lt/base.csv", "multipaxos_lt/scale3.csv"]
     pbft_files = ["pbft_critical_path_lt/results.csv", "pbft_critical_path_lt/auto3.csv"]
 
+    output_plot("Voting", voting_files)
     output_plot("2PC", twopc_files)
     output_plot("Paxos", paxos_files)
     output_plot("PBFT", pbft_files)
