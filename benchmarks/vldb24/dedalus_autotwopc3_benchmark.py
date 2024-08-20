@@ -1,7 +1,7 @@
-from benchmarks.voting.voting import *
+from benchmarks.autotwopc.autotwopc import *
 
 def main(args) -> None:
-    class Suite(VotingSuite):
+    class Suite(AutoTwoPCSuite):
         def __init__(self, args) -> None:
             self._args = args
             super().__init__()
@@ -10,11 +10,16 @@ def main(args) -> None:
             return vars(self._args)
 
         def cluster_spec(self) -> Dict[str, Dict[str, int]]:
+            # Max across any benchmark
             return {
                 '1': {
                     'leaders': 1,
-                    'replicas': 3, # Max across any benchmark
-                    'clients': 6,
+                    'vote_requesters': 3,
+                    'participant_voters': 3*3,
+                    'committers': 3,
+                    'participant_ackers': 3*3,
+                    'enders': 3,
+                    'clients': 5,
                 },
             }
         
@@ -23,7 +28,12 @@ def main(args) -> None:
                 Input(
                     num_client_procs = num_client_procs,
                     num_clients_per_proc=num_clients_per_proc,
-                    num_replicas=num_replicas,
+                    num_participants=num_participants,
+                    num_vote_requesters=num_vote_requesters,
+                    num_participant_voter_partitions=num_participant_voter_partitions,
+                    num_committers=num_committers,
+                    num_participant_acker_partitions=num_participant_acker_partitions,
+                    num_enders=num_enders,
                     jvm_heap_size='100m',
                     duration=datetime.timedelta(seconds=60),
                     timeout=datetime.timedelta(seconds=65),
@@ -55,14 +65,24 @@ def main(args) -> None:
                     (3, 100),
                     (4, 100),
                     (5, 100),
-                    (6, 100),
+                    # (6, 100),
                     # (7, 100),
                     # (8, 100),
                     # (9, 100),
                     # (10, 100),
                 ]
-                for num_replicas in [3]
+                for num_participants in [3]
+                # for num_vote_requesters in [3]
+                # for num_participant_voter_partitions in [3]
+                # for num_committers in [3]
+                # for num_participant_acker_partitions in [3]
+                # for num_enders in [3]
                 for leader_flush_every_n in [1] #[15,1]
+                for (num_vote_requesters, num_participant_voter_partitions, num_committers, num_participant_acker_partitions, num_enders) in [
+                    # (1, 1, 1, 1, 1),
+                    (3, 3, 3, 3, 3),
+                    # (5, 5, 5, 5, 5),
+                ]
             ] #*3
 
         def summary(self, input: Input, output: Output) -> str:
@@ -70,7 +90,12 @@ def main(args) -> None:
                 'value_size': input.workload,
                 'num_client_procs': input.num_client_procs,
                 'num_clients_per_proc': input.num_clients_per_proc,
-                'num_replicas': input.num_replicas,
+                'num_participants': input.num_participants,
+                'num_vote_requesters': input.num_vote_requesters,
+                'num_participant_voter_partitions': input.num_participant_voter_partitions,
+                'num_committers': input.num_committers,
+                'num_participant_acker_partitions': input.num_participant_acker_partitions,
+                'num_enders': input.num_enders,
                 'leader_flush_every_n': input.leader_flush_every_n,
                 'latency.median_ms': output.latency.median_ms,
                 'start_throughput_1s.p90': output.start_throughput_1s.p90,
@@ -79,7 +104,7 @@ def main(args) -> None:
 
     suite = Suite(args)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'voting_lt_dedalus') as dir:
+                                  'autotwopc3_lt_dedalus') as dir:
         suite.run_suite(dir)
 
 

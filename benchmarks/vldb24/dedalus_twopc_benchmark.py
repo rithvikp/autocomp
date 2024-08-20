@@ -14,7 +14,7 @@ def main(args) -> None:
                 '1': {
                     'leaders': 1,
                     'replicas': 3, # Max across any benchmark
-                    'clients': 4,
+                    'clients': 2,
                 },
             }
         
@@ -52,8 +52,8 @@ def main(args) -> None:
                     (1, 50),
                     (1, 100),
                     (2, 100),
-                    (3, 100),
-                    (4, 100),
+                    # (3, 100),
+                    # (4, 100),
                     # (5, 100),
                     # (6, 100),
                     # (7, 100),
@@ -63,7 +63,7 @@ def main(args) -> None:
                 ]
                 for num_replicas in [3]
                 for leader_flush_every_n in [1] #[15,1]
-            ] *3
+            ] #*3
 
         def summary(self, input: Input, output: Output) -> str:
             return str({

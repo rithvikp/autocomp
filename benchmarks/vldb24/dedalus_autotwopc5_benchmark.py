@@ -19,7 +19,7 @@ def main(args) -> None:
                     'committers': 5,
                     'participant_ackers': 3*5,
                     'enders': 5,
-                    'clients': 7,
+                    'clients': 5,
                 },
             }
         
@@ -59,14 +59,14 @@ def main(args) -> None:
                 # for num_replicas in [3, 5]
                 for (num_client_procs, num_clients_per_proc) in [
                     (1, 1),
-                    # (1, 50),
-                    # (1, 100),
-                    # (2, 100),
-                    # (3, 100),
-                    # (4, 100),
+                    (1, 50),
+                    (1, 100),
+                    (2, 100),
+                    (3, 100),
+                    (4, 100),
                     (5, 100),
-                    (6, 100),
-                    (7, 100),
+                    # (6, 100),
+                    # (7, 100),
                     # (8, 100),
                     # (9, 100),
                     # (10, 100),
@@ -83,7 +83,7 @@ def main(args) -> None:
                     # (3, 3, 3, 3, 3),
                     (5, 5, 5, 5, 5),
                 ]
-            ] *3
+            ] #*3
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
@@ -104,7 +104,7 @@ def main(args) -> None:
 
     suite = Suite(args)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'autotwopc_lt_dedalus') as dir:
+                                  'autotwopc5_lt_dedalus') as dir:
         suite.run_suite(dir)
 
 

@@ -146,7 +146,9 @@ Add Prometheus to the path by appending `export PATH="/home/<username>/prometheu
 
 ### Connecting to NFS server
 
-We can connect this machine to the NFS server we set up earlier. Replace `<eval-nfs-ip>` with the **internal** IP address of the NFS server set up earlier. You can find this address [here](https://console.cloud.google.com/compute/instances):
+We can connect this machine to the NFS server we set up earlier. Replace `<eval-nfs-ip>` with the **internal** IP address of the NFS server set up earlier. You can find this address [here](https://console.cloud.google.com/compute/instances).
+
+Note: Continue executing these commands on `eval-primary`.
 ```bash
 sudo apt install -y nfs-common
 sudo mkdir /mnt/nfs
@@ -157,7 +159,7 @@ echo "<eval-nfs-ip>:/share               /mnt/nfs      nfs auto,nofail,noatime,n
 
 
 ### Create the worker image
-At this point we will need to stop this VM in order to create the VM image that all the workers will be based on. Exit the terminal, stop the VM on the GCP console and wait for it to stop.
+At this point we will need to stop `eval-primary` in order to create the VM image that all the workers will be based on. Exit the terminal, stop `eval-primary` on the GCP console and wait for it to stop.
 
 Go [here](https://console.cloud.google.com/compute/images) and click "Create Image":
 - Name: `worker-image`

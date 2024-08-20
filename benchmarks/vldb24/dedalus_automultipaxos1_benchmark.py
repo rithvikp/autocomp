@@ -14,13 +14,13 @@ def main(args) -> None:
                 # Max across any benchmark
                 '1': {
                     'leaders': 2,
-                    'replicas': 4,
-                    'clients': 4,
-                    'acceptors': 3*3,
+                    'replicas': 3,
+                    'clients': 3,
+                    'acceptors': 3*1,
                     # Num coordinators = num logical acceptors
                     'coordinators': 3,
-                    'p2a_proxy_leaders': 2*3,
-                    'p2b_proxy_leaders': 2*3,
+                    'p2a_proxy_leaders': 2*1,
+                    'p2b_proxy_leaders': 2*1,
                 },
             }
 
@@ -135,17 +135,17 @@ def main(args) -> None:
                 
                 for value_size in [16]
                 for num_acceptors_per_partition in [3]
-                for num_acceptor_partitions in [3]
-                for num_replicas in [4]
-                for num_p2a_proxy_leaders_per_leader in [3]
-                for num_p2b_proxy_leaders_per_leader in [3]
+                for num_acceptor_partitions in [1]
+                for num_replicas in [3]
+                for num_p2a_proxy_leaders_per_leader in [1]
+                for num_p2b_proxy_leaders_per_leader in [1]
                 for (num_client_procs, num_clients_per_proc, leader_flush_every_n) in [
                     (1, 1, 1),
                     (1, 50, 10),
                     (1, 100, 10),
                     (2, 100, 10),
                     (3, 100, 10),
-                    (4, 100, 10),
+                    # (4, 100, 10),
                     # (5, 100, 10),
                     # (6, 100, 10),
                     # (7, 100, 10),
@@ -153,7 +153,7 @@ def main(args) -> None:
                     # (9, 100, 10),
                     # (10, 100, 10),
                 ]
-            ] * 3
+            ] #*3
 
         def summary(self, input: Input, output: Output) -> str:
             return str({

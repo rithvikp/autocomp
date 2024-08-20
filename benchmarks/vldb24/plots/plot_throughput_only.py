@@ -1,8 +1,6 @@
 
 # import matplotlib
 # matplotlib.use('pdf')
-# font = {'size': 16}
-# matplotlib.rc('font', **font)
 
 from typing import Any, List
 import matplotlib.pyplot as plt
@@ -14,6 +12,8 @@ import re
 def output_plot(name, files):
     fig, ax = plt.subplots(1, 1, figsize=(2, 5)) # Skinny and tall
     barwidth = 0.1
+    font = {'size': 24}
+    plt.rc('font', **font)
 
     for i, file in enumerate(files):
         dfs = pd.read_csv(file)
@@ -28,8 +28,8 @@ def output_plot(name, files):
         max_throughput_index = np.argmax(throughputs)
         plt.bar(i*barwidth, throughputs[max_throughput_index], barwidth, yerr=throughput_stds[max_throughput_index])
    
-    plt.title(name)
-    plt.ylabel('Throughput (thousands of commands per second)')
+    # plt.title(name)
+    # plt.ylabel('Throughput (thousands of commands per second)')
     plt.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
     fig.savefig(name + "_throughput_only.pdf", bbox_inches='tight')
     
@@ -38,13 +38,13 @@ def output_plot(name, files):
 def main(args):
     voting_files = ["voting_lt/3base.csv", "voting_lt/3scale5.csv"]
     twopc_files = ["twopc_lt/fixed_base.csv", "twopc_lt/fixed_auto5.csv"]
-    paxos_files = ["multipaxos_lt/base.csv", "multipaxos_lt/scale3.csv"]
+    paxos_files = ["multipaxos_lt/base.csv", "multipaxos_lt/scale3.csv", "multipaxos_lt/scale_michael.csv"]
     pbft_files = ["pbft_critical_path_lt/results.csv", "pbft_critical_path_lt/auto3.csv"]
 
-    output_plot("Voting", voting_files)
     output_plot("2PC", twopc_files)
     output_plot("Paxos", paxos_files)
     output_plot("PBFT", pbft_files)
+    output_plot("Voting", voting_files)
     
 
 if __name__ == '__main__':

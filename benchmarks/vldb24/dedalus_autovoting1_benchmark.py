@@ -13,10 +13,10 @@ def main(args) -> None:
             return {
                 '1': {
                     'leaders': 1,
-                    'replicas': 3*5, # Max across any benchmark
-                    'collectors': 5, # Max across any benchmark
-                    'broadcasters': 5, # Max across any benchmark
-                    'clients': 10,
+                    'replicas': 3*1, # Max across any benchmark
+                    'collectors': 1, # Max across any benchmark
+                    'broadcasters': 1, # Max across any benchmark
+                    'clients': 8,
                 },
             }
 
@@ -67,16 +67,14 @@ def main(args) -> None:
                 (6, 100),
                 (7, 100),
                 (8, 100),
-                (9, 100),
-                (10, 100),
+                # (9, 100),
+                # (10, 100),
             ]
             for (replica_partitions, collectors, broadcasters) in [
-                # (1,1,1),
-                # (3,3,3),
-                (5,5,5),
+                (1,1,1),
             ]
 
-            ]*3
+            ]#*3
 
         def summary(self, input: Input, output: Output) -> str:
             return str({
@@ -95,7 +93,7 @@ def main(args) -> None:
 
     suite = Suite(args)
     with benchmark.SuiteDirectory(args.suite_directory,
-                                  'autovoting_lt_dedalus') as dir:
+                                  'autovoting1_lt_dedalus') as dir:
         suite.run_suite(dir)
 
 
