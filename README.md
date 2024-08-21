@@ -21,7 +21,7 @@ Although most of the example benchmark scripts in this repository are located in
 Follow instructions in [Setup](SETUP.md).  
 Then, modify the cluster scripts, as seen in [Protocols](PROTOCOLS.md): 
 `<project>`: Your GCP project name.  
-`<zone>`: The zone where your VMs and networks are located.  
+`<zone>`: The zone where your VMs and networks are located. For example: `us-central1-a`.  
 `<username>`: Your username on the VMs.
 
 ```bash
@@ -40,7 +40,7 @@ The benchmarks in the paper were each run 3 times in order to extract the median
 
 Most runs did not have large standard deviations so you should see graphs similar to what we have in the paper even with only a single run.
 
-### BaseVoting
+### <img src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Rust_programming_language_black_logo.svg" width="15"/> BaseVoting
 Execute the following:
 ```bash
 cd ~/autocomp
@@ -83,7 +83,7 @@ We wil copy this file to `plots/voting_lt`:
 cp results.csv ~/autocomp/benchmarks/vldb24/plots/voting_lt/3base.csv
 ```
 
-### ScalableVoting
+### <img src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Rust_programming_language_black_logo.svg" width="15"/> ScalableVoting
 Execute the following:
 ```bash
 cd ~/autocomp
@@ -102,7 +102,7 @@ python plot.py --results voting_lt/3base.csv voting_lt/3scale1.csv voting_lt/3sc
 ```
 The output graph will be in `eval-voting-lt.pdf`.
 
-### Base2PC
+### <img src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Rust_programming_language_black_logo.svg" width="15"/> Base2PC
 Execute the following:
 ```bash
 cd ~/autocomp
@@ -110,7 +110,7 @@ benchmarks/vldb24/dedalus_twopc_run.sh
 ```
 Copy `results.csv` into [benchmarks/vldb24/plots/twopc_lt](benchmarks/vldb24/plots/twopc_lt), and replace `fixed_base.csv`.
 
-### Scalable2PC
+### <img src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Rust_programming_language_black_logo.svg" width="15"/> Scalable2PC
 Execute the following:
 ```bash
 cd ~/autocomp
@@ -128,7 +128,7 @@ python plot.py --results twopc_lt/fixed_base.csv twopc_lt/fixed_auto1.csv twopc_
 ```
 The output graph will be in `eval-2pc-lt.pdf`.
 
-### BasePaxos
+### <img src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Rust_programming_language_black_logo.svg" width="15"/> BasePaxos
 Execute the following:
 ```bash
 cd ~/autocomp
@@ -136,7 +136,7 @@ benchmarks/vldb24/dedalus_multipaxos_run.sh
 ```
 Copy `results.csv` into [benchmarks/vldb24/plots/multipaxos_lt](benchmarks/vldb24/plots/multipaxos_lt), and replace `base.csv`.
 
-### ScalablePaxos
+### <img src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Rust_programming_language_black_logo.svg" width="15"/> ScalablePaxos
 Execute the following:
 ```bash
 cd ~/autocomp
@@ -155,6 +155,58 @@ python plot.py --results multipaxos_lt/base.csv multipaxos_lt/scale1.csv multipa
 The output graph will be in `eval-paxos-lt.pdf`.
 
 ## Reproducing Figure 9
+We already have the results for <img src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Rust_programming_language_black_logo.svg" width="15"/> BasePaxos above.
 
+We need to get results for <img src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Rust_programming_language_black_logo.svg" width="15"/> ScalablePaxos with a slightly different configuration in order to restrict the number of machines it can use.  
+Execute the following:
+```bash
+cd ~/autocomp
+benchmarks/vldb24/dedalus_automultipaxos_restricted_run.sh
+```
+Copy `results.csv` into [benchmarks/vldb24/plots/multipaxos_lt](benchmarks/vldb24/plots/multipaxos_lt), and replace `11nodes.csv`.
+
+Now we need results for BasePaxos.  
+Execute the following:
+```bash
+cd ~/autocomp
+benchmarks/vldb24/scala_paxos_run.sh
+```
+Copy `results.csv` into [benchmarks/vldb24/plots/multipaxos_lt](benchmarks/vldb24/plots/multipaxos_lt), and replace `base_michael.csv`.
+
+Now we need results for CompPaxos.  
+Execute the following:
+```bash
+cd ~/autocomp
+benchmarks/vldb24/scala_comp_paxos_run.sh
+```
+Copy `results.csv` into [benchmarks/vldb24/plots/multipaxos_lt](benchmarks/vldb24/plots/multipaxos_lt), and replace `scale_michael.csv`.
+
+Finally, we need results for <img src="https://upload.wikimedia.org/wikipedia/commons/d/d5/Rust_programming_language_black_logo.svg" width="15"/> CompPaxos.  
+Execute the following:
+```bash
+cd ~/autocomp
+benchmarks/vldb24/dedalus_comppaxos_run.sh
+```
+Copy `results.csv` into [benchmarks/vldb24/plots/multipaxos_lt](benchmarks/vldb24/plots/multipaxos_lt), and replace `dedalus_comp.csv`.
+
+We can now generate Figure 9 by executing the following:
+```bash
+cd ~/autocomp/benchmarks/vldb24/plots
+python plot_michael_comp.py --results multipaxos_lt/base.csv multipaxos_lt/11nodes.csv multipaxos_lt/base_michael.csv multipaxos_lt/scale_michael.csv multipaxos_lt/dedalus_comp.csv  --titles "RBasePaxos" "RScalablePaxos" "BasePaxos" "ScalablePaxos" "RCompPaxos" --output eval-michael-comp.pdf
+```
+The output graph will be in `eval-michael-comp.pdf`.
 
 ## Reproducing Figure 10
+Execute the following:
+```bash
+cd ~/autocomp
+benchmarks/vldb24/dedalus_microbenchmarks_run.sh
+```
+Copy `results.csv` into [benchmarks/vldb24/plots/microbenchmarks](benchmarks/vldb24/plots/microbenchmarks), and replace `combined.csv`.
+
+We can now generate Figure 10 by executing the following:
+```bash
+cd ~/autocomp/benchmarks/vldb24/plots/microbenchmarks
+python plot_bar.py
+```
+The output graph will be in `microbenchmarks.pdf`.
