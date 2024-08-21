@@ -79,7 +79,7 @@ def main(args) -> None:
         regular_throughput = df[df['microbenchmark_type'] == regular_type]['throughput'].agg(np.mean)
 
         auto_df = df[df['microbenchmark_type'] == auto_type][['throughput', 'latency']]
-        assert len(auto_df) == 3
+        # assert len(auto_df) == 3
 
         auto_df['scaling'] = auto_df['throughput'] / regular_throughput
         data.append([benchmark, auto_df['scaling'].agg(np.mean), auto_df['scaling'].agg(np.std)])

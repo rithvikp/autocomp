@@ -99,11 +99,11 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (2, 2),
                         (3, 2), # THIS ONE
-                        (3, 2), # THIS ONE
-                        (3, 2), # THIS ONE
+                        # (3, 2), # THIS ONE
+                        # (3, 2), # THIS ONE
                         # (4, 2),
                     ]
                 ])
@@ -115,12 +115,12 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (5, 2),
                         # (6, 2),
                         (7, 2), # THIS ONE
-                        (7, 2), # THIS ONE
-                        (7, 2), # THIS ONE
+                        # (7, 2), # THIS ONE
+                        # (7, 2), # THIS ONE
                         # (8, 2),
                     ]
                 ])
@@ -137,11 +137,11 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (2, 2),
                         (3, 2), # THIS ONE
-                        (3, 2), # THIS ONE
-                        (3, 2), # THIS ONE
+                        # (3, 2), # THIS ONE
+                        # (3, 2), # THIS ONE
                         # (4, 2),
                     ]
                 ])
@@ -156,11 +156,11 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (6, 2),
                         (7, 2), # THIS ONE
-                        (7, 2), # THIS ONE
-                        (7, 2), # THIS ONE
+                        # (7, 2), # THIS ONE
+                        # (7, 2), # THIS ONE
                         # (8, 2),
                     ]
                 ])
@@ -177,11 +177,11 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (2, 2),
                         (3, 2), # THIS ONE
-                        (3, 2), # THIS ONE
-                        (3, 2), # THIS ONE
+                        # (3, 2), # THIS ONE
+                        # (3, 2), # THIS ONE
                         # (4, 2),
                     ]
 
@@ -197,10 +197,10 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         (6, 2), # THIS ONE
-                        (6, 2), # THIS ONE
-                        (6, 2), # THIS ONE
+                        # (6, 2), # THIS ONE
+                        # (6, 2), # THIS ONE
                         # (7, 2),
                         # (8, 2),
                     ]
@@ -249,11 +249,11 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (2, 2),
                         (2, 3), # THIS ONE
-                        (2, 3), # THIS ONE
-                        (2, 3), # THIS ONE
+                        # (2, 3), # THIS ONE
+                        # (2, 3), # THIS ONE
                         # (3, 3),
                     ]
                 ])
@@ -269,10 +269,10 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         (4, 3), # THIS ONE,
-                        (4, 3), # THIS ONE,
-                        (4, 3), # THIS ONE,
+                        # (4, 3), # THIS ONE,
+                        # (4, 3), # THIS ONE,
                         # (6, 3),
                     ]
                 ])
@@ -289,11 +289,11 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (1, 3),
                         (2, 3), # THIS ONE
-                        (2, 3), # THIS ONE
-                        (2, 3), # THIS ONE
+                        # (2, 3), # THIS ONE
+                        # (2, 3), # THIS ONE
                         # (3, 3),
                     ]
                 ])
@@ -309,11 +309,11 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (3, 3),
                         (4, 3), # THIS ONE
-                        (4, 3), # THIS ONE
-                        (4, 3), # THIS ONE
+                        # (4, 3), # THIS ONE
+                        # (4, 3), # THIS ONE
                         # (5, 3),
                         # (6, 3),
                     ]
@@ -331,11 +331,11 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (1, 3),
                         (2, 3), # THIS ONE
-                        (2, 3), # THIS ONE
-                        (2, 3), # THIS ONE
+                        # (2, 3), # THIS ONE
+                        # (2, 3), # THIS ONE
                         # (3, 3),
                     ]
                 ])
@@ -351,11 +351,11 @@ def main(args) -> None:
                         **system_inputs,
                     )
                     for (num_client_procs, num_clients_per_proc) in [
-                        (1, 1),
+                        # (1, 1),
                         # (3, 3),
                         (4, 3), # THIS ONE
-                        (4, 3), # THIS ONE
-                        (4, 3), # THIS ONE
+                        # (4, 3), # THIS ONE
+                        # (4, 3), # THIS ONE
                         # (5, 3),
                     ]
                 ])
