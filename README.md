@@ -19,7 +19,7 @@ Although most of the example benchmark scripts in this repository are located in
 
 # SIGMOD '24 Artifact Evaluation
 Follow instructions in [Setup](SETUP.md).  
-Then, modify the cluster scripts, as seen in [Protocols](PROTOCOLS.md): 
+Then, modify the cluster scripts, as seen in [Protocols](PROTOCOLS.md):  
 `<project>`: Your GCP project name.  
 `<zone>`: The zone where your VMs and networks are located. For example: `us-central1-a`.  
 `<username>`: Your username on the VMs.
